@@ -24,7 +24,7 @@ export function skyDome(top, bottom, { radius = 3500, exponent = 0.6 } = {}) {
     side: THREE.BackSide, depthWrite: false, fog: false,
     uniforms: { top: { value: new THREE.Color(top) }, bottom: { value: new THREE.Color(bottom) }, exponent: { value: exponent } },
     vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: 'uniform vec3 top; uniform vec3 bottom; uniform float exponent; varying vec3 vP; void main(){ float h = max(vP.y, 0.0); gl_FragColor = vec4(mix(bottom, top, pow(h, exponent)), 1.0); #include <colorspace_fragment> }'
+    fragmentShader: 'uniform vec3 top; uniform vec3 bottom; uniform float exponent; varying vec3 vP; void main(){ float h = max(vP.y, 0.0); gl_FragColor = vec4(mix(bottom, top, pow(h, exponent)), 1.0);\n#include <colorspace_fragment>\n}'
   });
   const m = new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 16), mat);
   m.renderOrder = -10; m.frustumCulled = false;
@@ -139,6 +139,7 @@ export function crowdGeometry({ legs = true } = {}) {
 
 export function crowdMaterial(u = {}, { jump = false } = {}) {
   const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  mat.customProgramCacheKey = () => 'crowd-' + jump;
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = u.uTime || { value: 0 };
     sh.uniforms.uExcite = u.uExcite || { value: 1 };
@@ -280,7 +281,9 @@ export function fallingParticles({ count = 2000, box = [60, 30, 60], color = 0xf
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: `uniform vec3 uColor; uniform float uOpacity; varying float vA;
-      void main(){ float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; gl_FragColor = vec4(uColor, uOpacity * vA * smoothstep(0.5, 0.15, d)); #include <colorspace_fragment> }`
+      void main(){ float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; gl_FragColor = vec4(uColor, uOpacity * vA * smoothstep(0.5, 0.15, d));
+#include <colorspace_fragment>
+}`
   });
   const p = new THREE.Points(g, mat); p.frustumCulled = false;
   p.userData.mat = mat;

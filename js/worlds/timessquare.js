@@ -162,7 +162,7 @@ export function createTimesSquare() {
 
   // taxi e auto
   const cars = [];
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 10; i++) {
     const dir = i % 2 ? -1 : 1;
     const taxi = R() < 0.7;
     const v = makeVehicle({ body: taxi ? 0xf2bf00 : [0x111111, 0xdddddd, 0x7a0d0d][i % 3], stripe: taxi ? 0x111111 : null, bar: null, len: 4.8, hei: 1.6, wid: 1.9, taxi });
@@ -181,8 +181,8 @@ export function createTimesSquare() {
     segments: [
       { a: [-13, 0.18, -105], b: [-13, 0.18, 170], width: 4.5, both: true },
       { a: [13, 0.18, -105], b: [13, 0.18, 170], width: 4.5, both: true },
-      { a: [2.1, 0.16, -18], b: [2.1, 0.16, 58], width: 1, both: true },
-      { a: [-2.1, 0.16, -18], b: [-2.1, 0.16, 58], width: 1, both: true }
+      { a: [3.4, 0.16, -18], b: [3.4, 0.16, 58], width: 0.5, both: true },
+      { a: [-3.4, 0.16, -18], b: [-3.4, 0.16, 58], width: 0.5, both: true }
     ],
     colors: [0x1f2937, 0x111827, 0x7f1d1d, 0x374151, 0x1e3a8a, 0x5b3a29, 0xb91c1c, 0x064e3b, 0x6b7280, 0xd4d4d8],
     speed: [0.9, 1.6], seed: 9

@@ -194,7 +194,7 @@ export function createMars() {
   const wg = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 12); wg.rotateZ(Math.PI / 2);
   for (const z of [-1.1, 0, 1.1]) for (const x of [-1.15, 1.15]) { const w = new THREE.Mesh(wg, lambert(0x222222)); w.position.set(x, 0.4, z); rover.add(w); }
   const flag = new THREE.Group(); flag.position.set(4, 0, -12); surf.add(flag);
-  flag.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.6, 6), lambert(0xcccccc)), { position: new THREE.Vector3(0, 1.3, 0) }));
+  const fpole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.6, 6), lambert(0xcccccc)); fpole.position.y = 1.3; flag.add(fpole);
   const ftex = canvasTex(256, 160, (c, w, h) => { c.fillStyle = '#1e3a8a'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = '900 40px Arial'; c.textAlign = 'center'; c.fillText('MISSIONE', w / 2, 65); c.fillText('AURORA', w / 2, 115); });
   const fm = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.75), new THREE.MeshLambertMaterial({ map: ftex, side: THREE.DoubleSide })); fm.position.set(0.6, 2.2, 0); flag.add(fm);
   const surfAstros = [makePerson({ shirt: 0xf0f0f0, shorts: 0xe0e0e0, astronaut: true }), makePerson({ shirt: 0xf0f0f0, shorts: 0xe0e0e0, astronaut: true })];

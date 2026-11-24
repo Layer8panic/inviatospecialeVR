@@ -135,7 +135,7 @@ export function createVesuvio() {
   for (let i = 0; i < 300; i++) { m4.makeTranslation(-450 + i * 3, 0.52, -5.6); posts.setMatrixAt(i, m4); }
   g.add(posts);
   // lampioni
-  for (let x = -120; x <= 120; x += 24) {
+  for (let x = -132; x <= 132; x += 24) {
     const p = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 5.5, 6), railM); p.position.set(x, 2.75, -4.5); g.add(p);
     const l = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe2a8 })); l.position.set(x, 5.6, -4.5); g.add(l);
     const gl = makeGlow(0xffcf80, 3, 0.6); gl.position.copy(l.position); g.add(gl);
@@ -203,9 +203,8 @@ export function createVesuvio() {
   // persone che si allontanano
   const walkers = new Walkers(170, {
     segments: [
-      { a: [260, 0, -1.5], b: [-300, 0, -1.5], width: 4 },
-      { a: [260, 0, 16], b: [-300, 0, 16], width: 2.5 },
-      { a: [260, 0, 3], b: [-300, 0, 3], width: 2 }
+      { a: [260, 0, -4.3], b: [-300, 0, -4.3], width: 1.4 },
+      { a: [260, 0, 16], b: [-300, 0, 16], width: 2.5 }
     ],
     colors: [0x3b4252, 0x6b4f3a, 0x2f4858, 0x8c2f39, 0xc9b79c, 0x1f2937, 0x4a5d23, 0x7a6c5d, 0x2e5c8a],
     speed: [1.1, 1.9], seed: 5

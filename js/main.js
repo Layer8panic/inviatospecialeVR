@@ -494,4 +494,8 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
-if (DEBUG) window.__isvr = { S, startMission, startPreview, get phase() { return phase; }, skip: () => { phaseT += 1000; } };
+if (DEBUG) window.__isvr = {
+  S, startMission, startPreview, beginImmersion, finishLive, startQuiz, showMenu,
+  get phase() { return phase; }, get world() { return world; }, get active() { return active; },
+  skip: (s = 1000) => { phaseT += s; }, look: (y, p = 0) => { yaw = y; pitch = p; }
+};

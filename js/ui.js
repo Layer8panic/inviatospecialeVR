@@ -164,11 +164,13 @@ export function makeTVCamera(lensHeight = 1.5, { label = true } = {}) {
   const top = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.3), mid); top.position.set(0, 0.37, -0.05); yawG.add(top);
   const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.1, 0.28, 20), mid);
   lens.rotation.x = Math.PI / 2; lens.position.set(0, 0.2, 0.34); yawG.add(lens);
-  const hood = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.2, 0.08), dark); hood.position.set(0, 0.2, 0.5); yawG.add(hood);
-  const glass = new THREE.Mesh(new THREE.CircleGeometry(0.075, 24), new THREE.MeshBasicMaterial({ color: 0x0d2a4a, fog: false }));
-  glass.position.set(0, 0.2, 0.481); yawG.add(glass);
-  const glint = new THREE.Mesh(new THREE.CircleGeometry(0.02, 12), new THREE.MeshBasicMaterial({ color: 0x9ad0ff, fog: false }));
-  glint.position.set(0.03, 0.23, 0.482); yawG.add(glint);
+  const hood = new THREE.Mesh(new THREE.TorusGeometry(0.095, 0.022, 8, 24), dark); hood.position.set(0, 0.2, 0.49); yawG.add(hood);
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(0.078, 24), new THREE.MeshBasicMaterial({ color: 0x0b2440, fog: false }));
+  glass.position.set(0, 0.2, 0.485); yawG.add(glass);
+  const iris = new THREE.Mesh(new THREE.RingGeometry(0.03, 0.05, 24), new THREE.MeshBasicMaterial({ color: 0x24527f, fog: false }));
+  iris.position.set(0, 0.2, 0.486); yawG.add(iris);
+  const glint = new THREE.Mesh(new THREE.CircleGeometry(0.018, 12), new THREE.MeshBasicMaterial({ color: 0xcfe8ff, fog: false }));
+  glint.position.set(0.03, 0.23, 0.487); yawG.add(glint);
   const vf = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.12), mid); vf.position.set(-0.2, 0.3, -0.2); yawG.add(vf);
   const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.6, 6), metal);
   handle.rotation.x = Math.PI / 2.6; handle.position.set(0.15, 0.05, -0.5); yawG.add(handle);
@@ -277,14 +279,16 @@ export class Teleprompter extends THREE.Group {
 
     // comandi
     const by = -VIS / 2 - 0.12;
-    const mk = (label, x, w, opts) => { const b = new Button(label, { w, h: 0.13, ...opts }); b.position.set(x, by, 0.01); this.add(b); return b; };
+    let cx = -W / 2;
+    const gap = 0.02;
+    const mk = (label, w, opts) => { const b = new Button(label, { w, h: 0.14, size: 0.4, ...opts }); b.position.set(cx + w / 2, by, 0.01); cx += w + gap; this.add(b); return b; };
     const click = () => onClick && onClick();
-    mk('▲ SU', -0.67, 0.25, { bg: '#374151', hover: '#4b5563', onSelect: () => { click(); this.nudge(-160); } });
-    mk('▼ GIÙ', -0.405, 0.25, { bg: '#374151', hover: '#4b5563', onSelect: () => { click(); this.nudge(160); } });
-    this.playBtn = mk('❚❚ PAUSA', -0.11, 0.31, { bg: '#1d4ed8', hover: '#2563eb', onSelect: () => { click(); this.toggle(); } });
-    mk('– LENTO', 0.165, 0.22, { bg: '#374151', hover: '#4b5563', onSelect: () => { click(); this.speed(-1); } });
-    mk('+ VELOCE', 0.395, 0.22, { bg: '#374151', hover: '#4b5563', onSelect: () => { click(); this.speed(1); } });
-    this.doneBtn = mk('HO FINITO', 0.66, 0.28, { bg: '#15803d', hover: '#16a34a', onSelect: () => { click(); this.onFinish && this.onFinish(); } });
+    mk('▲ SU', 0.21, { bg: '#374151', hover: '#4b5563', onSelect: () => { click(); this.nudge(-160); } });
+    mk('▼ GIÙ', 0.21, { bg: '#374151', hover: '#4b5563', onSelect: () => { click(); this.nudge(160); } });
+    this.playBtn = mk('❚❚ PAUSA', 0.29, { bg: '#1d4ed8', hover: '#2563eb', onSelect: () => { click(); this.toggle(); } });
+    mk('– LENTO', 0.24, { bg: '#374151', hover: '#4b5563', onSelect: () => { click(); this.speed(-1); } });
+    mk('+ VELOCE', 0.26, { bg: '#374151', hover: '#4b5563', onSelect: () => { click(); this.speed(1); } });
+    this.doneBtn = mk('HO FINITO', W - (cx + W / 2), { bg: '#15803d', hover: '#16a34a', onSelect: () => { click(); this.onFinish && this.onFinish(); } });
     this.apply();
     this.startDelay = 2.5;
   }
@@ -296,8 +300,12 @@ export class Teleprompter extends THREE.Group {
       c.beginPath(); c.arc(h * 0.6, h / 2, h * 0.2, 0, Math.PI * 2); c.fill();
       c.fillStyle = '#fff'; c.textBaseline = 'middle'; c.textAlign = 'left';
       c.font = `900 ${Math.round(h * 0.5)}px ${FONT}`; c.fillText('IN DIRETTA', h * 1.0, h / 2);
-      c.textAlign = 'right'; c.font = `700 ${Math.round(h * 0.38)}px ${FONT}`;
-      c.fillText(`${this.reporter}  •  ${this.place}`, w - h * 0.4, h / 2);
+      const left = h * 1.0 + c.measureText('IN DIRETTA').width + h * 0.6;
+      const txt = `${this.reporter}  •  ${this.place}`;
+      let fs = Math.round(h * 0.4);
+      c.font = `700 ${fs}px ${FONT}`;
+      while (c.measureText(txt).width > w - left - h * 0.4 && fs > 12) { fs -= 2; c.font = `700 ${fs}px ${FONT}`; }
+      c.textAlign = 'right'; c.fillText(txt, w - h * 0.4, h / 2);
     });
   }
   apply() {

@@ -174,7 +174,7 @@ export function createStadium() {
   const flagGeo = new THREE.PlaneGeometry(1.8, 1.1, 12, 4).translate(0.9, 0, 0);
   const poleGeo = new THREE.CylinderGeometry(0.025, 0.025, 2.4, 5).translate(0, 1.2, 0);
   const flags = [];
-  for (let i = 0; i < 46; i++) {
+  for (let i = 0; i < 26; i++) {
     const s = seats[Math.floor(R() * seats.length)];
     const fg = new THREE.Group(); fg.position.set(s.x, s.y + 0.9, s.z);
     const barca = BARCA.includes(s.color);
