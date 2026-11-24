@@ -320,7 +320,7 @@ function saveResult(score, total) {
   try {
     const key = 'inviatoSpecialeVR.registro';
     const list = JSON.parse(localStorage.getItem(key) || '[]');
-    list.unshift({ name: S.name || '—', world: S.worldId, score, total, date: new Date().toISOString() });
+    list.unshift({ name: S.name || '(senza nome)', world: S.worldId, score, total, date: new Date().toISOString() });
     localStorage.setItem(key, JSON.stringify(list.slice(0, 200)));
   } catch (e) {}
 }

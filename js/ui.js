@@ -258,7 +258,7 @@ export class Teleprompter extends THREE.Group {
     c.fillStyle = '#000000'; c.fillRect(0, 0, PXW, H);
     const yEnd = drawBlocks(c, blocks, margin, top, maxW);
     c.font = `800 40px ${FONT}`; c.fillStyle = '#7CFC8A'; c.textAlign = 'center';
-    c.fillText('— FINE DEL SERVIZIO —', PXW / 2, yEnd + 20);
+    c.fillText('FINE DEL SERVIZIO', PXW / 2, yEnd + 20);
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = UIConf.aniso;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
