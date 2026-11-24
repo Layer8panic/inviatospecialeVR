@@ -247,7 +247,7 @@ export function makeVehicle({ body = 0xffffff, stripe = 0xff6600, len = 5.2, wid
     const sign = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.25), new THREE.MeshBasicMaterial({ color: 0xfff1a8 }));
     sign.position.set(0, 0.35 + hei * 0.62 + hei * 0.36 + 0.09, -len * 0.05); g.add(sign);
   }
-  g.userData.lights = lights; g.userData.wheels = wheels;
+  g.userData.lights = lights; g.userData.wheels = wheels; g.userData.dynamic = true;
   g.userData.flash = (t) => {
     lights.forEach((L) => {
       const on = Math.sin(t * 14 + L.i * Math.PI) > 0;
@@ -366,4 +366,98 @@ export function buildingsGeometry(list, tile = [6, 3.5]) {
     geos.push(g);
   }
   return mergeGeometries(geos);
+}
+
+// ---------- rettangolo arrotondato (catino dello stadio) ----------
+// Restituisce N punti con normale verso l'esterno; la stessa parametrizzazione per ogni offset d,
+// così due anelli paralleli si possono unire in una striscia di triangoli.
+export function roundedRect(a, b, r, d = 0, { nx = 40, nz = 28, na = 14 } = {}) {
+  const A = a + d, B = b + d, R = r + d, pts = [];
+  const sx = a - r, sz = b - r; // tratti rettilinei (metà)
+  const push = (x, z, nX, nZ) => pts.push({ x, z, nx: nX, nz: nZ });
+  // lato +z (da x=-sx a +sx), angolo, lato +x, ...
+  for (let i = 0; i < nx; i++) { const t = -sx + (2 * sx * i) / nx; push(t, B, 0, 1); }
+  for (let i = 0; i < na; i++) { const th = Math.PI / 2 - (Math.PI / 2) * (i / na); push(sx + Math.cos(th) * R, sz + Math.sin(th) * R, Math.cos(th), Math.sin(th)); }
+  for (let i = 0; i < nz; i++) { const t = sz - (2 * sz * i) / nz; push(A, t, 1, 0); }
+  for (let i = 0; i < na; i++) { const th = -(Math.PI / 2) * (i / na); push(sx + Math.cos(th) * R, -sz + Math.sin(th) * R, Math.cos(th), Math.sin(th)); }
+  for (let i = 0; i < nx; i++) { const t = sx - (2 * sx * i) / nx; push(t, -B, 0, -1); }
+  for (let i = 0; i < na; i++) { const th = -Math.PI / 2 - (Math.PI / 2) * (i / na); push(-sx + Math.cos(th) * R, -sz + Math.sin(th) * R, Math.cos(th), Math.sin(th)); }
+  for (let i = 0; i < nz; i++) { const t = -sz + (2 * sz * i) / nz; push(-A, t, -1, 0); }
+  for (let i = 0; i < na; i++) { const th = Math.PI - (Math.PI / 2) * (i / na); push(-sx + Math.cos(th) * R, sz + Math.sin(th) * R, Math.cos(th), Math.sin(th)); }
+  return pts;
+}
+
+// punti a passo costante lungo un anello chiuso
+export function alongRing(pts, step, cb) {
+  let carry = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    const L = Math.hypot(q.x - p.x, q.z - p.z);
+    let s = carry;
+    while (s < L) { const k = s / L; cb(p.x + (q.x - p.x) * k, p.z + (q.z - p.z) * k, p.nx + (q.nx - p.nx) * k, p.nz + (q.nz - p.nz) * k); s += step; }
+    carry = s - L;
+  }
+}
+
+// striscia tra due anelli: (inner, yIn) -> (outer, yOut); u lungo l'anello in metri / uScale
+export function ringStrip(inner, yIn, outer, yOut, { uScale = 4, vLen = 1, flip = false } = {}) {
+  const n = inner.length, pos = [], uv = [], idx = [];
+  let u = 0;
+  for (let i = 0; i <= n; i++) {
+    const a = inner[i % n], b = outer[i % n];
+    if (i > 0) { const p = inner[(i - 1) % n]; u += Math.hypot(a.x - p.x, a.z - p.z) / uScale; }
+    pos.push(a.x, yIn, a.z, b.x, yOut, b.z); uv.push(u, 0, u, vLen);
+  }
+  for (let i = 0; i < n; i++) { const k = i * 2; if (flip) idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); else idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+
+// ---------- ottimizzazione: unisce gli oggetti fermi che usano lo stesso materiale ----------
+// root deve essere già posizionato; gli oggetti con userData.dynamic restano separati.
+export function mergeStatic(root, target = root) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(target.matrixWorld).invert();
+  const groups = new Map();
+  const victims = [];
+  root.traverse((o) => {
+    if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh || Array.isArray(o.material) || o.userData.dynamic) return;
+    let p = o; let skip = false; while (p && p !== root) { if (p.userData.dynamic) skip = true; p = p.parent; }
+    if (skip || !o.visible) return;
+    const g = o.geometry; if (!g.attributes.position) return;
+    const attrs = ['position', 'normal', 'uv'].filter((k) => g.attributes[k]).join(',');
+    const key = o.material.uuid + '|' + attrs + '|' + (g.index ? 'i' : 'n') + '|' + o.renderOrder;
+    if (!groups.has(key)) groups.set(key, { mat: o.material, list: [], order: o.renderOrder });
+    groups.get(key).list.push(o);
+  });
+  for (const { mat, list, order } of groups.values()) {
+    if (list.length < 2) continue;
+    const geos = list.map((o) => {
+      const gg = o.geometry.clone();
+      for (const k of Object.keys(gg.attributes)) if (!['position', 'normal', 'uv'].includes(k)) gg.deleteAttribute(k);
+      gg.morphAttributes = {};
+      gg.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+      return gg;
+    });
+    const merged = mergeGeometries(geos);
+    geos.forEach((gg) => gg.dispose());
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, mat); m.renderOrder = order;
+    target.add(m);
+    list.forEach((o) => victims.push(o));
+  }
+  for (const o of victims) { if (o.parent) o.parent.remove(o); if (!o.geometry.userData.shared) o.geometry.dispose(); }
+  return victims.length;
+}
+
+// tanti bagliori in una sola chiamata di disegno
+export function glowPoints(positions, { color = 0xffffff, size = 3, opacity = 1 } = {}) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const m = new THREE.PointsMaterial({ map: glowTexture(), color, size, sizeAttenuation: true, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
+  const p = new THREE.Points(g, m); p.frustumCulled = false;
+  return p;
 }

@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, canvasTex, skyDome, starField, makeGlow, glowTexture, lambert, makePerson, animatePerson, smooth, lerp, fitText, photoMat, applyTex, PH, LOCAL } from './common.js';
 import { SND } from '../sounds.js';
+import { disposeTree } from '../ui.js';
+import { makeCharacter, SKINS, HAIR } from '../people.js';
 import * as A from '../audio.js';
 
 function planetTex(kind) {
@@ -32,7 +34,7 @@ function planetTex(kind) {
   });
 }
 
-export function createMars() {
+export function createMars(env) {
   const g = new THREE.Group();
   const R = rng(31);
 
@@ -59,7 +61,7 @@ export function createMars() {
   tg.push(new THREE.BoxGeometry(1.4, 0.4, 5).translate(6, 0.6, -1.5));
   const tower = new THREE.Mesh(mergeGeometries(tg), lambert(0xb23a2a)); pad.add(tower);
   // razzo sotto di noi (visibile guardando in basso dai finestrini)
-  const rocket = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, 44, 24), lambert(0xeeeeee)); rocket.position.y = -22; pad.add(rocket);
+  const rocket = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, 44, 24), lambert(0xeeeeee)); rocket.position.y = -22.8; pad.add(rocket);
   for (let i = 0; i < 30; i++) {
     const hill = new THREE.Mesh(new THREE.ConeGeometry(80 + R() * 140, 40 + R() * 90, 7), lambert(0x5d6b4a));
     const a = R() * Math.PI * 2, d = 900 + R() * 1200; hill.position.set(Math.cos(a) * d, -45 + 20, Math.sin(a) * d); pad.add(hill);
@@ -80,6 +82,8 @@ export function createMars() {
   const clouds2 = new THREE.Mesh(new THREE.SphereGeometry(60.8, 64, 48), cloudM); clouds2.visible = false;
   earth.visible = false; ext.add(earth); earth.add(clouds2); clouds2.visible = true;
   const atmo = makeGlow(0x6fb6ff, 160, 0.6); earth.add(atmo); atmo.position.set(0, 0, -5);
+  const moonM = new THREE.MeshLambertMaterial({ color: 0xbbbbbb }); applyTex(moonM, LOCAL('moon_1024.jpg'));
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(40, 48, 32), moonM); moon.visible = false; ext.add(moon);
   const mars = new THREE.Mesh(new THREE.SphereGeometry(60, 48, 32), new THREE.MeshLambertMaterial({ map: planetTex('mars') }));
   mars.visible = false; ext.add(mars);
   const marsAtmo = makeGlow(0xff9a6a, 150, 0.35); mars.add(marsAtmo); marsAtmo.position.set(0, 0, -5);
@@ -120,9 +124,109 @@ export function createMars() {
       plane(FW, CH, 0, CH / 2);
     }
   }
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(RAD, 8), lambert(0x4a4f57)); floor.rotation.set(-Math.PI / 2, 0, Math.PI / 8); cabin.add(floor);
+  const floorM = photoMat(PH('metal_plate'), { fallback: 0x4a4f57, tint: 0xa8adb6, repeat: [3, 3], normal: PH('metal_plate', 'nor_gl') });
+  const floor = new THREE.Mesh(new THREE.CylinderGeometry(RAD, RAD, 0.12, 8, 1), floorM); floor.rotation.y = Math.PI / 8; floor.position.y = -0.06; cabin.add(floor);
   const ceil = new THREE.Mesh(new THREE.CircleGeometry(RAD, 8), lambert(0xc9ced6)); ceil.rotation.set(Math.PI / 2, 0, Math.PI / 8); ceil.position.y = CH; cabin.add(ceil);
   const lamp = new THREE.Mesh(new THREE.CircleGeometry(0.6, 24), new THREE.MeshBasicMaterial({ color: 0xf5f8ff })); lamp.rotation.x = Math.PI / 2; lamp.position.y = CH - 0.01; cabin.add(lamp);
+
+  // astronauti: persone vere con tuta, casco con visiera dorata e zaino
+  const suit = { Shirt: 0xeef0f2, Shirt2: 0xd9dde3, Pants: 0xe6e8eb, Shoes: 0x9aa0a8, Socks: 0xe6e8eb, Jacket: 0xeef0f2, LightJacket: 0xeef0f2 };
+  const patchTex = canvasTex(128, 64, (c, w, h) => { c.fillStyle = '#1e3a8a'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = '900 30px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('AURORA', w / 2, h / 2); });
+  const flagTex = canvasTex(96, 64, (c, w, h) => { c.fillStyle = '#009246'; c.fillRect(0, 0, w / 3, h); c.fillStyle = '#ffffff'; c.fillRect(w / 3, 0, w / 3, h); c.fillStyle = '#ce2b37'; c.fillRect(2 * w / 3, 0, w / 3, h); });
+  const helmetM = new THREE.MeshPhongMaterial({ color: 0xf4f6f8, shininess: 60 });
+  const visorM = new THREE.MeshPhongMaterial({ color: 0xb8860b, emissive: 0x2a1c00, shininess: 160, specular: 0xffffff });
+  const dress = (c) => {
+    const s0 = 1 / c.root.scale.x;
+    const head = c.bones.Head, torso = c.bones.Torso || c.bones.Abdomen;
+    c.root.updateMatrixWorld(true);
+    const ws = new THREE.Vector3(); head.getWorldScale(ws); const k = 1 / ws.x;
+    const helmet = new THREE.Group(); helmet.scale.setScalar(k); head.add(helmet);
+    // orientamento del casco nello spazio dell'osso della testa: avanti = +z del personaggio, su = +y
+    const hp = head.getWorldPosition(new THREE.Vector3());
+    const oq = c.obj.getWorldQuaternion(new THREE.Quaternion());
+    const toLocal = (v) => { const w = hp.clone().add(v.applyQuaternion(oq)); return head.worldToLocal(w).normalize(); };
+    const fwd = toLocal(new THREE.Vector3(0, 0, 1)), up = toLocal(new THREE.Vector3(0, 1, 0));
+    const basis = new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(up, fwd).normalize(), up, fwd);
+    helmet.quaternion.setFromRotationMatrix(basis);
+    const shell = new THREE.Mesh(new THREE.SphereGeometry(0.17, 24, 18), helmetM); shell.position.set(0, 0.09, -0.01); helmet.add(shell);
+    // visiera centrata sull'asse +z (davanti)
+    const visor = new THREE.Mesh(new THREE.SphereGeometry(0.174, 24, 16, Math.PI * 0.18, Math.PI * 0.64, Math.PI * 0.28, Math.PI * 0.38), visorM);
+    visor.position.set(0, 0.09, -0.01); helmet.add(visor);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.025, 8, 24), helmetM); ring.rotation.x = Math.PI / 2; ring.position.y = -0.07; helmet.add(ring);
+    torso.getWorldScale(ws); const kt = 1 / ws.x;
+    const pack = new THREE.Group(); pack.scale.setScalar(kt); torso.add(pack);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.5, 0.2), lambert(0xdfe3e8)); box.position.set(0, 0.12, -0.2); pack.add(box);
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.45, 10), lambert(0xc0c5cc)); tank.position.set(0.12, 0.12, -0.31); pack.add(tank);
+    const tank2 = tank.clone(); tank2.position.x = -0.12; pack.add(tank2);
+    const patch = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.06), new THREE.MeshBasicMaterial({ map: patchTex })); patch.position.set(0.08, 0.22, 0.13); pack.add(patch);
+    const fl = new THREE.Mesh(new THREE.PlaneGeometry(0.09, 0.06), new THREE.MeshBasicMaterial({ map: flagTex })); fl.position.set(-0.09, 0.22, 0.13); pack.add(fl);
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.05), lambert(0x6b7280)); panel.position.set(0, 0.02, 0.14); pack.add(panel);
+  };
+  const astros = [], surfAstros = [];
+  const mkAstro = (list, parent, setup) => makeCharacter('m_long', { colors: suit, skin: 0xcfd3d8, hair: 0xcfd3d8, height: 1.8 }).then((c) => { dress(c); parent.add(c.obj); setup(c); list.push(c); return c; });
+  const astroReady = Promise.all([
+    mkAstro(astros, cabin, (c) => { c.obj.position.set(-1.6, 0, -0.55); c.obj.rotation.y = Math.PI / 2 + 0.25; c.play('idle'); }),
+    mkAstro(astros, cabin, (c) => { c.obj.position.set(1.6, 0, -0.55); c.obj.rotation.y = -Math.PI / 2 - 0.25; c.play('idle', { offset: 0.5 }); })
+  ]);
+
+  // ---------- diretta TV della partenza, mostrata sugli schermi di bordo ----------
+  const tv = { scene: new THREE.Scene(), cam: new THREE.PerspectiveCamera(38, 16 / 9, 1, 8000), rt: new THREE.WebGLRenderTarget(512, 288) };
+  tv.rt.texture.colorSpace = THREE.SRGBColorSpace;
+  {
+    const S = tv.scene;
+    S.add(new THREE.HemisphereLight(0xcfe3ff, 0x4a5a3a, 1.1)); const sl = new THREE.DirectionalLight(0xffffff, 1.2); sl.position.set(200, 300, 100); S.add(sl);
+    tv.sky = skyDome(0x3d86d6, 0xc4def3, { exponent: 0.5, radius: 6000 }); S.add(tv.sky);
+    const gr = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), lambert(0x6e7d58)); gr.rotation.x = -Math.PI / 2; S.add(gr);
+    const sea2 = new THREE.Mesh(new THREE.PlaneGeometry(9000, 4000), lambert(0x2f5f8f)); sea2.rotation.x = -Math.PI / 2; sea2.position.set(0, 0.2, -3000); S.add(sea2);
+    const padB = new THREE.Mesh(new THREE.CylinderGeometry(30, 36, 6, 24), lambert(0x8d8d8d)); padB.position.y = 3; S.add(padB);
+    const tw = new THREE.Mesh(new THREE.BoxGeometry(6, 70, 6), new THREE.MeshLambertMaterial({ color: 0xb23a2a, wireframe: true })); tw.position.set(12, 35, 0); S.add(tw);
+    const rk = new THREE.Group(); S.add(rk); tv.rocket = rk;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 48, 24), lambert(0xf2f2f2)); body.position.y = 30; rk.add(body);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(3, 9, 24), lambert(0xf2f2f2)); nose.position.y = 58.5; rk.add(nose);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(3.02, 3.02, 3, 24), lambert(0x111111)); band.position.y = 40; rk.add(band);
+    for (let k = 0; k < 4; k++) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.4, 8, 5), lambert(0x222222)); fin.position.set(Math.cos(k * Math.PI / 2) * 3.4, 9, Math.sin(k * Math.PI / 2) * 3.4); fin.rotation.y = -k * Math.PI / 2; rk.add(fin); }
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(2.6, 22, 20, 1, true), new THREE.MeshBasicMaterial({ color: 0xffb040, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })); flame.rotation.x = Math.PI; flame.position.y = -5; rk.add(flame); tv.flame = flame;
+    const fg = makeGlow(0xffa040, 40, 0); fg.position.y = 0; rk.add(fg); tv.fglow = fg;
+    tv.smoke = [];
+    for (let i = 0; i < 60; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xe8e2da, transparent: true, opacity: 0, depthWrite: false })); S.add(sp); tv.smoke.push({ sp, life: 0, v: new THREE.Vector3() }); }
+    tv.earth = new THREE.Mesh(new THREE.SphereGeometry(2000, 64, 48), earthM); tv.earth.visible = false; S.add(tv.earth);
+    tv.stars = starField(800, 5000, { size: 1.2, minY: -1, opacity: 0 }); S.add(tv.stars);
+    tv.cam.position.set(-160, 30, 220); tv.cam.lookAt(0, 30, 0);
+  }
+  const overlay = canvasTex(512, 288, () => {});
+  const drawOverlay = (t, line) => overlay.redraw((c, w, h) => {
+    c.clearRect(0, 0, w, h);
+    c.fillStyle = '#c1121f'; c.fillRect(14, 14, 120, 30); c.fillStyle = '#fff'; c.font = '900 20px Arial'; c.textBaseline = 'middle'; c.fillText('● LIVE TV', 22, 30);
+    c.fillStyle = 'rgba(0,0,0,0.6)'; c.fillRect(0, h - 44, w, 44); c.fillStyle = '#fff'; c.font = '800 20px Arial'; fitText(c, line, 14, h - 22, w - 28, 20, { weight: '800', align: 'left' });
+  });
+  drawOverlay(0, 'BASE DI LANCIO • LA NAVICELLA AURORA SULLA RAMPA');
+  const tvScreenM = new THREE.MeshBasicMaterial({ map: tv.rt.texture });
+  const tvOverM = new THREE.MeshBasicMaterial({ map: overlay, transparent: true });
+  let tvFrame = 0;
+  const renderTV = (tt) => {
+    if (!env || !env.renderer) return;
+    if (++tvFrame % 3) return;
+    const launch = Math.max(0, tt - 26);
+    const h = 0.5 * 18 * launch * launch;
+    tv.rocket.position.y = h;
+    tv.flame.visible = launch > 0; tv.flame.scale.set(1 + Math.random() * 0.15, 1 + Math.random() * 0.3, 1); tv.fglow.material.opacity = launch > 0 ? 0.9 : 0;
+    // vapore e fumo alla base
+    for (const s2 of tv.smoke) {
+      if (s2.life <= 0 && (launch > 0 && launch < 20 || (tt > 15 && tt < 26 && Math.random() < 0.05))) { s2.life = 1; s2.sp.position.set((Math.random() - 0.5) * 8, Math.max(2, h - 4), (Math.random() - 0.5) * 8); s2.v.set((Math.random() - 0.5) * 40, launch > 0 ? -5 : 3, (Math.random() - 0.5) * 40); }
+      if (s2.life > 0) { s2.life -= 0.012; s2.sp.position.addScaledVector(s2.v, 0.05); s2.sp.scale.setScalar(20 + (1 - s2.life) * 60); s2.sp.material.opacity = s2.life * 0.7; }
+    }
+    const k = smooth(0, 6000, h);
+    tv.sky.lerpColors(0x3d86d6, 0xc4def3, 0x000000, 0x00020a, k); tv.stars.material.opacity = k;
+    if (tt < 44) { tv.cam.position.set(-160, 30 + Math.min(h * 0.92, h), 220); tv.cam.lookAt(0, 30 + h, 0); tv.earth.visible = false; }
+    else { // inquadratura dallo spazio: la navicella sopra la Terra
+      tv.earth.visible = true; tv.earth.position.set(0, -2100, -600);
+      tv.rocket.position.set(0, 0, 0); tv.flame.visible = false; tv.fglow.material.opacity = 0;
+      tv.cam.position.set(-90 + Math.sin(tt * 0.05) * 20, 40, 160); tv.cam.lookAt(0, 20, 0);
+      tv.sky.setColors(0x000000, 0x00020a); tv.stars.material.opacity = 1;
+    }
+    const r = env.renderer, xr = r.xr.enabled, prev = r.getRenderTarget();
+    r.xr.enabled = false; r.setRenderTarget(tv.rt); r.render(tv.scene, tv.cam); r.setRenderTarget(prev); r.xr.enabled = xr;
+  };
 
   // console con schermi
   const screenTex = canvasTex(1024, 512, () => {});
@@ -145,7 +249,10 @@ export function createMars() {
     const cg = new THREE.Group(); cg.rotation.y = th; cg.position.set(-Math.sin(th) * (AP - 0.35), 0, -Math.cos(th) * (AP - 0.35)); cabin.add(cg);
     const desk = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.95, 0.6), lambert(0x30353d)); desk.position.y = 0.48; cg.add(desk);
     const top = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.05, 0.62), lambert(0x1f2329)); top.position.y = 0.97; top.rotation.x = -0.25; cg.add(top);
-    const scr = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.6), scrM); scr.position.set(0, 1.55, -0.25); cg.add(scr);
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.62), tvScreenM); scr.position.set(0, 1.62, -0.25); cg.add(scr);
+    const ov = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.62), tvOverM); ov.position.set(0, 1.62, -0.248); cg.add(ov);
+    const bez = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.7, 0.04), lambert(0x15181d)); bez.position.set(0, 1.62, -0.28); cg.add(bez);
+    const data = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.35), scrM); data.position.set(0, 1.12, 0.05); data.rotation.x = -0.5; cg.add(data);
     for (let k = 0; k < 14; k++) {
       const m = new THREE.MeshBasicMaterial({ color: [0x22ff66, 0xff3333, 0xffcc00, 0x33aaff][k % 4] });
       const l = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.05), m); l.position.set(-0.75 + k * 0.11, 1.0, 0.12); cg.add(l); leds.push(m);
@@ -158,12 +265,6 @@ export function createMars() {
   }
   // portellone sul retro
   const hatch = new THREE.Mesh(new THREE.CircleGeometry(0.55, 24), lambert(0x8a919c)); hatch.position.set(0, 1.25, AP - 0.01); hatch.rotation.y = Math.PI; cabin.add(hatch);
-
-  const astros = [makePerson({ shirt: 0xf0f0f0, shorts: 0xe0e0e0, astronaut: true }), makePerson({ shirt: 0xf0f0f0, shorts: 0xe0e0e0, astronaut: true })];
-  astros[0].position.set(-1.65, 0, -0.55); astros[0].rotation.y = Math.PI / 2 + 0.25;
-  astros[1].position.set(1.65, 0, -0.55); astros[1].rotation.y = -Math.PI / 2 - 0.25;
-  const patchTex = canvasTex(128, 64, (c, w, h) => { c.fillStyle = '#1e3a8a'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = '900 30px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('AURORA', w / 2, h / 2); });
-  astros.forEach((a) => { const p = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.1), new THREE.MeshBasicMaterial({ map: patchTex })); p.position.set(0.1, 1.3, 0.125); a.add(p); cabin.add(a); });
 
   // ---------- superficie di Marte ----------
   const surf = new THREE.Group(); surf.visible = false; g.add(surf);
@@ -205,8 +306,7 @@ export function createMars() {
   const fpole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.6, 6), lambert(0xcccccc)); fpole.position.y = 1.3; flag.add(fpole);
   const ftex = canvasTex(256, 160, (c, w, h) => { c.fillStyle = '#1e3a8a'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = '900 40px Arial'; c.textAlign = 'center'; c.fillText('MISSIONE', w / 2, 65); c.fillText('AURORA', w / 2, 115); });
   const fm = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.75), new THREE.MeshLambertMaterial({ map: ftex, side: THREE.DoubleSide })); fm.position.set(0.6, 2.2, 0); flag.add(fm);
-  const surfAstros = [makePerson({ shirt: 0xf0f0f0, shorts: 0xe0e0e0, astronaut: true }), makePerson({ shirt: 0xf0f0f0, shorts: 0xe0e0e0, astronaut: true })];
-  surfAstros.forEach((a) => surf.add(a));
+  const surfReady = Promise.all([0, 1].map((i) => mkAstro(surfAstros, surf, (c) => { c.play('walk', { offset: i * 0.5 }); })));
   const dust = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(new Array(1500 * 3).fill(0).map((_, i) => (i % 3 === 1 ? Math.random() * 12 : (Math.random() - 0.5) * 80))), 3)),
     new THREE.PointsMaterial({ color: 0xe0a070, size: 0.05, transparent: true, opacity: 0.6, depthWrite: false }));
   surf.add(dust);
@@ -227,7 +327,8 @@ export function createMars() {
     background: 0x000000,
     fog: null,
     studio: { distance: 1.75, scale: 0.74 },
-    postLiveSeconds: 40,
+    postLiveSeconds: 50,
+    ready: Promise.all([astroReady, surfReady]),
     update(dt, t, ph, cam) {
       if (cam && fade.parent !== cam) cam.add(fade);
       leds.forEach((m, i) => { const on = Math.sin(t * (2 + (i % 5)) + i) > 0.2; m.color.setHex(on ? [0x22ff66, 0xff3333, 0xffcc00, 0x33aaff][i % 4] : 0x111111); });
@@ -236,11 +337,17 @@ export function createMars() {
       const tt = Math.max(0, T);
       // astronauti
       astros.forEach((a, i) => {
-        const float = tt > 44 ? Math.sin(t * 0.8 + i) * 0.06 + 0.08 : 0;
-        a.position.y = float;
-        a.userData.armR.rotation.x = -1.1 + Math.sin(t * 1.7 + i * 2) * 0.35;
-        a.userData.armL.rotation.x = -0.9 + Math.cos(t * 1.3 + i) * 0.3;
+        a.obj.position.y = tt > 44 ? Math.sin(t * 0.8 + i) * 0.05 + 0.05 : 0;
+        a.update(dt);
+        const ua = a.bones.UpperArmR, la = a.bones.LowerArmR;
+        if (ua) ua.rotation.x += -0.9 + Math.sin(t * 1.7 + i * 2) * 0.25;
+        if (la) la.rotation.x += -0.5;
       });
+      renderTV(tt);
+      if (t - (inst._ov || 0) > 1) {
+        inst._ov = t;
+        drawOverlay(t, !started ? 'BASE DI LANCIO • LA NAVICELLA AURORA SULLA RAMPA' : tt < 26 ? 'CONTO ALLA ROVESCIA • T-' + Math.ceil(26 - tt) : tt < 44 ? 'DECOLLO DELLA NAVICELLA AURORA' : 'AURORA IN ORBITA • ROTTA VERSO MARTE');
+      }
       // decollo
       const launch = Math.max(0, tt - 26);
       const alt = 0.5 * 18 * launch * launch;
@@ -253,13 +360,16 @@ export function createMars() {
       sunGlow.material.opacity = smooth(0.5, 1, k) * 0.9;
       const shakeAmp = launch > 0 && launch < 16 ? 0.01 * (1 - launch / 16) : 0;
       cabin.position.set((Math.random() - 0.5) * shakeAmp, (Math.random() - 0.5) * shakeAmp, (Math.random() - 0.5) * shakeAmp);
-      // Terra che si allontana
-      if (tt > 38 && !landed) {
-        earth.visible = !post || P < 10;
-        const D = lerp(170, 1400, smooth(38, 170, tt));
-        const dir = new THREE.Vector3(-0.72, -0.28, -0.62).normalize();
+      // dallo spazio: la Terra che rimpicciolisce dal finestrino e la Luna
+      const Q = post ? P - 10 : -1; // l'arrivo su Marte parte 10 secondi dopo la fine del servizio
+      if (tt > 33 && !landed) {
+        earth.visible = !(Q > 14);
+        const D = lerp(150, 1800, smooth(33, 230, tt + (post ? P : 0)));
+        const dir = new THREE.Vector3(-0.72, -0.22, -0.66).normalize();
         earth.position.copy(dir).multiplyScalar(D);
         earth.rotation.y += dt * 0.03; clouds2.rotation.y += dt * 0.008;
+        moon.visible = !(Q > 14);
+        moon.position.set(0.62, 0.1, -0.78).multiplyScalar(lerp(900, 1100, smooth(33, 200, tt))); moon.rotation.y += dt * 0.01;
       }
       // console
       if (t - lastConsole > 0.5) {
@@ -267,44 +377,46 @@ export function createMars() {
         if (started && tt < 26) drawConsole('T - ' + Math.max(0, Math.ceil(26 - tt)), 'CONTO ALLA ROVESCIA', tt > 16);
         else if (tt >= 26 && tt < 44) drawConsole('DECOLLO', 'VELOCITÀ ' + Math.round(launch * 640).toLocaleString('it-IT') + ' KM/H', tt > 32 && tt < 36);
         else if (tt >= 44 && !post) drawConsole('ROTTA: MARTE', 'DISTANZA DALLA TERRA: ' + Math.round(earth.position.length() * 120).toLocaleString('it-IT') + ' KM');
-        else if (post && !landed) drawConsole('MARTE', P < 16 ? 'AVVICINAMENTO' : 'DISCESA IN CORSO', P > 16);
+        else if (post && !landed) drawConsole(Q < 0 ? 'ROTTA: MARTE' : 'MARTE', Q < 0 ? 'ARRIVO TRA POCHI SECONDI' : Q < 16 ? 'AVVICINAMENTO' : 'DISCESA IN CORSO', Q > 16);
         else if (!started) drawConsole('AURORA', 'VERIFICA SISTEMI');
       }
       // fase finale: arrivo su Marte
-      if (post) {
-        const D = lerp(1600, 150, smooth(0, 16, P));
+      if (post && Q >= 0) {
+        const D = lerp(1600, 150, smooth(0, 16, Q));
         mars.visible = !landed;
         mars.position.set(0, -0.32 * D, -D); mars.rotation.y += dt * 0.02;
-        const entry = P > 16 && P < 22.5;
+        const entry = Q > 16 && Q < 22.5;
         plasma.forEach((p, i) => { p.material.opacity = entry ? 0.4 + Math.random() * 0.6 : 0; p.scale.setScalar(2.5 + Math.random() * 2); });
-        if (entry) { const a = 0.01; cabin.position.set((Math.random() - 0.5) * a, (Math.random() - 0.5) * a, (Math.random() - 0.5) * a); sky.lerpColors(0x000000, 0x00020a, 0x4a1a08, 0x8a3a10, smooth(16, 21, P)); }
-        if (P > 21.5 && P < 23) { fade.visible = true; fadeM.opacity = smooth(21.5, 22.6, P); }
-        if (P >= 23 && !landed) {
+        if (entry) { const a = 0.01; cabin.position.set((Math.random() - 0.5) * a, (Math.random() - 0.5) * a, (Math.random() - 0.5) * a); sky.lerpColors(0x000000, 0x00020a, 0x4a1a08, 0x8a3a10, smooth(16, 21, Q)); }
+        if (Q > 21.5 && Q < 23) { fade.visible = true; fadeM.opacity = smooth(21.5, 22.6, Q); }
+        if (Q >= 23 && !landed) {
           landed = true; cabin.visible = false; ext.visible = false; surf.visible = true; inst.fog = fogSurf; inst.background = 0xd8a27a;
           hemi.color.setHex(0xffd9bf); hemi.groundColor.setHex(0x5a2a1a); hemi.intensity = 1.1; sunL.color.setHex(0xffe6cc); sunL.position.set(-150, 120, -80);
           plasma.forEach((p) => (p.visible = false));
         }
         if (landed) {
-          fadeM.opacity = 1 - smooth(23.2, 24.6, P); fade.visible = fadeM.opacity > 0.01;
+          fadeM.opacity = 1 - smooth(23.2, 24.6, Q); fade.visible = fadeM.opacity > 0.01;
           surfAstros.forEach((a, i) => {
-            const ang = t * 0.12 + i * Math.PI;
-            const x = 3 + Math.cos(ang) * (4 + i * 2), z = -9 + Math.sin(ang) * (3 + i);
-            const nx = 3 + Math.cos(ang + 0.05) * (4 + i * 2), nz = -9 + Math.sin(ang + 0.05) * (3 + i);
-            a.position.set(x, Math.abs(Math.sin(t * 2.4 + i)) * 0.15, z); a.rotation.y = Math.atan2(nx - x, nz - z);
-            animatePerson(a, t * 4.8 + i, 0.4);
+            const ang = t * 0.09 + i * Math.PI;
+            const x = 3 + Math.cos(ang) * (5 + i * 2), z = -9 + Math.sin(ang) * (4 + i);
+            const nx = 3 + Math.cos(ang + 0.05) * (5 + i * 2), nz = -9 + Math.sin(ang + 0.05) * (4 + i);
+            a.obj.position.set(x, 0, z); a.obj.rotation.y = Math.atan2(nx - x, nz - z);
+            a.update(dt * 0.8);
           });
           const dp = dust.geometry.attributes.position.array;
           for (let i = 0; i < dp.length; i += 3) { dp[i] += dt * 1.2; if (dp[i] > 40) dp[i] -= 80; }
           dust.geometry.attributes.position.needsUpdate = true;
         }
       }
-      if (snd) snd.tick(tt, P);
+      if (post && Q < 0) mars.visible = false;
+      if (snd) snd.tick(tt, post ? P - 10 : -1);
     },
+    debugJump(tt, p) { started = true; T = tt; if (p !== undefined) { post = true; P = p; } },
     onPhase(ph) {
       if (ph === 'immersion') { started = true; T = 0; }
       if (ph === 'postlive') { post = true; P = 0; }
     },
-    dispose() { if (fade.parent) fade.parent.remove(fade); fade.geometry.dispose(); fadeM.dispose(); },
+    dispose() { if (fade.parent) fade.parent.remove(fade); fade.geometry.dispose(); fadeM.dispose(); tv.rt.dispose(); disposeTree(tv.scene); },
     minImmersion: 75,
     // in cabina: niente pannelli oltre le pareti
     panelDist(p, d, want) {

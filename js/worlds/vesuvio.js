@@ -1,7 +1,9 @@
 // CRONACA – Il Vesuvio si risveglia: Napoli in allerta (emergenza simulata)
 import * as THREE from 'three';
-import { rng, canvasTex, skyDome, makeGlow, lambert, makePerson, animatePerson, Walkers, makeVehicle, fallingParticles, fitText, photoMat, applyTex, PH, LOCAL, buildingsGeometry } from './common.js';
+import { rng, canvasTex, skyDome, makeGlow, lambert, makeVehicle, fallingParticles, fitText, photoMat, applyTex, PH, LOCAL, buildingsGeometry, mergeStatic, glowPoints } from './common.js';
 import { SND } from '../sounds.js';
+import { makeCharacter, bakeAtlas, impostorCrowd, SKINS, HAIR, CIVILIANS } from '../people.js';
+import { Colliders } from '../physics.js';
 import * as A from '../audio.js';
 import { SoundScope } from '../audio.js';
 
@@ -15,10 +17,11 @@ function heightAt(r) {
   return 0;
 }
 
-export function createVesuvio() {
+export function createVesuvio(env) {
   const g = new THREE.Group();
   const R = rng(21);
-  const U = { uTime: { value: 0 }, uFlash: { value: 0 } };
+  const U = { uTime: { value: 0 }, uFlash: { value: 0 }, uLight: { value: 0.85 } };
+  const col = new Colliders();
 
   g.add(new THREE.HemisphereLight(0xb7a393, 0x3a2e28, 1.0));
   const sun = new THREE.DirectionalLight(0xffa36b, 0.9); sun.position.set(400, 300, -600); g.add(sun);
@@ -50,13 +53,13 @@ export function createVesuvio() {
   // paesi ai piedi del vulcano
   const townN = 420;
   const town = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), lambert(0xffffff), townN);
-  const m4 = new THREE.Matrix4(), col = new THREE.Color(), q = new THREE.Quaternion();
+  const m4 = new THREE.Matrix4(), tcol = new THREE.Color(), q = new THREE.Quaternion();
   for (let i = 0; i < townN; i++) {
     const a = Math.PI * 0.5 + (R() - 0.5) * 1.9, rr = 1250 + R() * 430;
     const x = VX + Math.cos(a) * rr, z = VZ + Math.sin(a) * rr;
     const h = 10 + R() * 22;
     m4.compose(new THREE.Vector3(x, h / 2 + heightAt(rr), z), q.identity(), new THREE.Vector3(16 + R() * 20, h, 16 + R() * 20));
-    town.setMatrixAt(i, m4); col.set([0xcbb79a, 0xd8c7a8, 0xb59a7a, 0xe0d3bd][Math.floor(R() * 4)]); town.setColorAt(i, col);
+    town.setMatrixAt(i, m4); tcol.set([0xcbb79a, 0xd8c7a8, 0xb59a7a, 0xe0d3bd][Math.floor(R() * 4)]); town.setColorAt(i, tcol);
   }
   g.add(town);
 
@@ -142,11 +145,14 @@ export function createVesuvio() {
   for (let i = 0; i < 300; i++) { m4.makeTranslation(-450 + i * 3, 0.52, -5.6); posts.setMatrixAt(i, m4); }
   g.add(posts);
   // lampioni
+  const lampHeadM = new THREE.MeshBasicMaterial({ color: 0xffe2a8 }), lampGlow = [];
   for (let x = -132; x <= 132; x += 24) {
     const p = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 5.5, 6), railM); p.position.set(x, 2.75, -4.5); g.add(p);
-    const l = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe2a8 })); l.position.set(x, 5.6, -4.5); g.add(l);
-    const gl = makeGlow(0xffcf80, 3, 0.6); gl.position.copy(l.position); g.add(gl);
+    const l = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), lampHeadM); l.position.set(x, 5.6, -4.5); g.add(l);
+    lampGlow.push(x, 5.6, -4.5);
+    col.circle(x, -4.5, 0.15);
   }
+  g.add(glowPoints(lampGlow, { color: 0xffcf80, size: 3, opacity: 0.6 }));
   // facciata napoletana: intonaco, finestre con persiane verdi, balconi in ferro (una ripetizione = 6 m x 3.5 m)
   const facade = canvasTex(512, 300, (c, w, h) => {
     c.fillStyle = '#e9e1d2'; c.fillRect(0, 0, w, h);
@@ -195,7 +201,9 @@ export function createVesuvio() {
   const sback = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.3, 0.15), lambert(0x222222)); sback.position.set(0, 2.8, -0.09); signG.add(sback);
   for (const x of [-2, 2]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.2, 6), lambert(0x555555)); p.position.set(x, 1.1, -0.09); signG.add(p); }
   g.add(signG);
+  col.box(-9, -3.3, 4.4, 0.4, 0.35);
   const signG2 = signG.clone(); signG2.position.set(26, 0, -3.2); signG2.rotation.y = -0.3; g.add(signG2);
+  col.box(26, -3.3, 4.4, 0.4, -0.3);
 
   // mezzi di soccorso in movimento
   const vehicles = [];
@@ -211,26 +219,64 @@ export function createVesuvio() {
     const v = makeVehicle({ body: d.body, stripe: d.stripe, bar: d.bar, len: d.len || 5.4, hei: d.hei || 2.4 });
     v.position.set(d.x, 0, d.lane); v.rotation.y = d.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
     v.userData.d = d; g.add(v); vehicles.push(v);
+    col.follow(v, 0, [d.len ? 2.3 : 2.2, (d.len || 5.4) + 0.2]);
   });
-  // ambulanza ferma con soccorritori
+  // ambulanza ferma, transenne e postazione dei soccorritori
   const amb = makeVehicle({ body: 0xffffff, stripe: 0xff6a00, bar: 'blue' }); amb.position.set(12, 0, 3.4); amb.rotation.y = -Math.PI / 2.3; g.add(amb);
-  const rescuers = [];
-  [[9, 1.5], [10.5, 0.6], [14, 1.2]].forEach(([x, z], i) => {
-    const p = makePerson({ shirt: 0xff7a00, shorts: 0x1f2937 }); p.position.set(x, 0, z); p.rotation.y = -0.8 + i * 0.5; g.add(p); rescuers.push(p);
-  });
+  col.follow(amb, 0, [2.3, 5.6]);
   const barrierM = [lambert(0xdc2626), lambert(0xffffff)];
   for (let i = 0; i < 8; i++) { const b = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 0.4), barrierM[i % 2]); b.position.set(17 + i * 1.25, 0.45, 2.2); g.add(b); }
+  col.box(21.4, 2.2, 10, 0.5);
+  const tent = new THREE.Group(); tent.position.set(-14, 0, 2.5); g.add(tent);
+  const tentTop = new THREE.Mesh(new THREE.ConeGeometry(3.4, 1.4, 4), lambert(0x1f4fa8)); tentTop.rotation.y = Math.PI / 4; tentTop.position.y = 3.1; tent.add(tentTop);
+  for (const [x, z] of [[-2.2, -2.2], [2.2, -2.2], [-2.2, 2.2], [2.2, 2.2]]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.5, 6), lambert(0xcccccc)); l.position.set(x, 1.25, z); tent.add(l); }
+  const pcTex = canvasTex(512, 96, (c, w, h) => { c.fillStyle = '#1f4fa8'; c.fillRect(0, 0, w, h); c.fillStyle = '#ffd200'; c.textAlign = 'center'; c.textBaseline = 'middle'; fitText(c, 'PROTEZIONE CIVILE', w / 2, h / 2, w * 0.9, 60); });
+  for (const r of [0, Math.PI]) { const band = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.6), new THREE.MeshLambertMaterial({ map: pcTex, side: THREE.DoubleSide })); band.position.set(0, 2.35, r ? -2.21 : 2.21); band.rotation.y = r; tent.add(band); }
+  const table = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.9), lambert(0xdddddd)); table.position.set(0, 0.85, 0); tent.add(table);
+  for (const x of [-1, 1]) { const tl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.85, 0.8), lambert(0x888888)); tl.position.set(x, 0.42, 0); tent.add(tl); }
+  const kit = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.35), lambert(0xd32f2f)); kit.position.set(0.5, 1.04, 0); tent.add(kit);
+  const stretcher = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.12, 2), lambert(0xff7a00)); stretcher.position.set(9.5, 0.7, 4.5); g.add(stretcher);
+  for (const [x, z] of [[-16.2, 0.3], [-11.8, 0.3], [-16.2, 4.7], [-11.8, 4.7]]) col.circle(x, z, 0.15);
+  col.box(-14, 2.5, 2.6, 1.1);
+  col.box(9.5, 4.5, 0.8, 2.2);
 
-  // persone che si allontanano
-  const walkers = new Walkers(170, {
-    segments: [
-      { a: [260, 0, -4.3], b: [-300, 0, -4.3], width: 1.4 },
-      { a: [260, 0, 16], b: [-300, 0, 16], width: 2.5 }
-    ],
-    colors: [0x3b4252, 0x6b4f3a, 0x2f4858, 0x8c2f39, 0xc9b79c, 0x1f2937, 0x4a5d23, 0x7a6c5d, 0x2e5c8a],
-    speed: [1.1, 1.9], seed: 5
-  });
-  g.add(walkers.mesh);
+  // ---- persone: chi scappa, chi soccorre ----
+  const people = [];
+  const vest = { Shirt: 0xff7a00, Shirt2: 0xff7a00, Jacket: 0xff7a00, LightJacket: 0xff7a00, Pants: 0x1f2937 };
+  const police = { Shirt: 0x1b2a4a, Shirt2: 0x1b2a4a, Pants: 0x1b2a4a, Jacket: 0x1b2a4a, LightJacket: 0x1b2a4a };
+  const look = () => ({ skin: SKINS[Math.floor(R() * SKINS.length)], hair: HAIR[Math.floor(R() * HAIR.length)], height: 1.58 + R() * 0.3 });
+  const mk = async (model, opts, setup) => { const c = await makeCharacter(model, { ...look(), ...opts }); g.add(c.obj); setup(c); people.push(c); col.follow(c.obj, 0.32); return c; };
+  const lanes = [-4.3, -2.8, -1.4, 0.6, 14.8, 16.2];
+  const loadP = async () => {
+    const jobs = [];
+    for (let i = 0; i < 26; i++) {
+      const model = CIVILIANS[Math.floor(R() * CIVILIANS.length)];
+      jobs.push(mk(model, {}, (c) => {
+        c.mode = i < 17 ? 'run' : 'hurry';
+        c.lane = lanes[Math.floor(R() * lanes.length)] + (R() - 0.5) * 0.6;
+        c.speed = c.mode === 'run' ? 3.6 + R() * 1.6 : 1.7 + R() * 0.5;
+        c.obj.position.set(-90 + R() * 180, 0, c.lane);
+        c.obj.rotation.y = -Math.PI / 2;
+        c.play(c.mode === 'run' ? 'run' : 'walk', { speed: c.mode === 'run' ? c.speed / 4.2 : 1.35, offset: R() });
+      }));
+    }
+    // soccorritori attorno all'ambulanza e alla tenda
+    [[9.2, 1.2, -0.8], [10.6, 0.4, 0.2], [-13.2, 3.4, 0.4], [-15, 3.2, -0.3], [8.4, 5.6, 2.8]].forEach(([x, z, ry], k) => {
+      jobs.push(mk(k % 2 ? 'f_street' : 'm_long', { colors: vest }, (c) => { c.mode = 'rescuer'; c.obj.position.set(x, 0, z); c.obj.rotation.y = ry; c.play(k === 4 ? 'clap' : 'idle', { offset: R() }); }));
+    });
+    // agenti che indicano la via di fuga
+    [[3, -2.2, -1.4], [30, 5, -1.7]].forEach(([x, z, ry]) => jobs.push(mk('m_shirt', { colors: police }, (c) => { c.mode = 'police'; c.obj.position.set(x, 0, z); c.obj.rotation.y = ry; c.play('idle'); })));
+    await Promise.all(jobs);
+  };
+  const peopleReady = loadP();
+  // folla lontana sul marciapiede opposto (impostori che corrono, visti di lato)
+  const far = { mesh: null };
+  const farReady = env && env.renderer ? bakeAtlas(env.renderer, CIVILIANS.map((n, i) => ({ name: n, skin: SKINS[i % SKINS.length], hair: HAIR[i % HAIR.length], clip: i % 3 ? 'run' : 'walk' })), { frames: 8, cellW: 72, cellH: 150, angle: -Math.PI / 2 }).then((atlas) => {
+    const items = [];
+    for (let i = 0; i < 160; i++) items.push({ x: (R() - 0.5) * 300, y: 0.18, z: 17.4 + R() * 1.4, yaw: 0, row: i % 8, phase: R(), speed: 1.0 + R() * 0.6, dir: [-1, 0, 0] });
+    const m = impostorCrowd(atlas, items, { width: 0.9, height: 1.72, fps: 10, uniforms: U, walk: { len: 300 } });
+    g.add(m); far.mesh = m;
+  }) : Promise.resolve();
 
   // elicotteri
   const helis = [];
@@ -245,7 +291,7 @@ export function createVesuvio() {
     for (const x of [-0.8, 0.8]) { const sk = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 3), lambert(0x222222)); sk.position.set(x, -1.3, 0); h.add(sk); }
     const glass = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshPhongMaterial({ color: 0x223344, shininess: 90, specular: 0xffffff })); glass.rotation.x = Math.PI / 2; glass.position.set(0, 0.15, 1.7); h.add(glass);
     const beacon = makeGlow(0xff2020, 4, 1); beacon.position.y = -1; h.add(beacon);
-    h.userData = { rotor, tr, beacon };
+    h.userData = { rotor, tr, beacon, dynamic: true };
     return h;
   };
   [[0xd7261e, -60, -300, 220, 95, 0.07], [0x1e3a8a, 120, -120, 140, 70, -0.1]].forEach(([c, cx, cz, rr, hh, w]) => {
@@ -256,12 +302,15 @@ export function createVesuvio() {
   const ash = fallingParticles({ count: 1800, box: [70, 32, 70], color: 0x4a4542, size: 0.05, speed: 0.9, drift: 0.8, opacity: 0.85 });
   g.add(ash);
 
+  mergeStatic(g);
   let snd = null, boomTimer = 4, glowBase = 0.9;
   const tmpV = new THREE.Vector3();
 
   const inst = {
     group: g,
-    spawn: { x: 0, z: 0, yaw: -0.25 },
+    spawn: { x: 0, z: -2.2, yaw: -0.25 },
+    colliders: col,
+    ready: Promise.all([peopleReady, farReady]),
     background: 0x6e5c50,
     fog: new THREE.Fog(0x6e5a4d, 180, 4200),
     studio: { distance: 2.3, scale: 1 },
@@ -292,9 +341,14 @@ export function createVesuvio() {
         v.userData.flash(t + d.x);
       });
       amb.userData.flash(t);
-      rescuers.forEach((p, i) => { p.userData.armR.rotation.x = -0.6 + Math.sin(t * 2 + i) * 0.5; });
-      rescuers[0].userData.armL.rotation.z = -1.3 + Math.sin(t * 3) * 0.4;
-      walkers.update(dt, t);
+      for (const c of people) {
+        if (c.mode === 'run' || c.mode === 'hurry') {
+          c.obj.position.x -= c.speed * dt;
+          if (c.obj.position.x < -95) { c.obj.position.x = 95; c.obj.position.z = lanes[Math.floor(Math.random() * lanes.length)] + (Math.random() - 0.5) * 0.6; }
+        }
+        c.update(dt);
+      }
+      if (far.mesh) far.mesh.setFog(inst.fog);
       helis.forEach((h) => {
         const o = h.userData.o; o.a += o.w * dt;
         h.position.set(o.cx + Math.cos(o.a) * o.rr, o.hh + Math.sin(t * 0.3) * 4, o.cz + Math.sin(o.a) * o.rr);
@@ -310,7 +364,7 @@ export function createVesuvio() {
       if (snd) snd.update();
     },
     onPhase() {},
-    bounds(p) { p.x = THREE.MathUtils.clamp(p.x, -70, 70); p.z = THREE.MathUtils.clamp(p.z, -4.8, 15); },
+    bounds(p) { p.x = THREE.MathUtils.clamp(p.x, -70, 70); p.z = THREE.MathUtils.clamp(p.z, -5.0, 18.5); },
     startAudio(s) {
       const dest = s.out;
       const dir = new THREE.Vector3(VX, 0, VZ).normalize();
@@ -327,6 +381,9 @@ export function createVesuvio() {
       s.stream(SND.eruzione.url, { gain: 0.8, dest: lowVol });
       // città alle spalle: traffico e ambulanze vere (Catania), Napoli al mattino
       s.stream(SND.cittaSirene.url, { gain: 0.85, dest: s.panner(0, 6, 40, { ref: 30, roll: 0.4 }) });
+      // gente che scappa e voci concitate
+      s.stream(SND.follaInMovimento.url, { gain: 0.75, dest: s.panner(-10, 2, 2, { ref: 8, roll: 0.6 }) });
+      s.stream(SND.folla.url, { gain: 0.5, dest: s.panner(20, 2, 12, { ref: 10, roll: 0.6 }) });
       // il mare sotto il lungomare
       s.stream(SND.mareNapoli.url, { gain: 0.7, dest: s.panner(0, -1, -9, { ref: 6, roll: 0.8 }) });
       // elicotteri che seguono la loro posizione

@@ -216,6 +216,7 @@ function updateLocomotion(dt) {
   }
   // spostamento con i limiti del mondo
   const next = _head.clone(); next.x += loco.vx * dt; next.z += loco.vz * dt;
+  if (world && world.colliders) world.colliders.resolve(next, 0.28);
   if (world && world.bounds) world.bounds(next);
   rig.position.x += next.x - _head.x; rig.position.z += next.z - _head.z;
 }
@@ -248,11 +249,12 @@ function clearUI() {
   active = studio = prompter = countdown = hint = null;
   pauseMenu = null; paused = false;
 }
+let loadToken = 0;
 function loadWorld(id, withAudio = true) {
   if (scope) { scope.stop(0.6); scope = null; }
   audio.hush();
   if (world) { if (world.dispose) world.dispose(); scene.remove(world.group); UI.disposeTree(world.group); world = null; }
-  world = BUILDERS[id]();
+  world = BUILDERS[id]({ renderer, audio, onPick: (wid) => { audio.click(); startMission(wid); } });
   world.id = id;
   scene.add(world.group);
   scene.fog = world.fog || null;
@@ -269,10 +271,27 @@ function setPhase(p) {
 const sc = () => (world && world.studio ? world.studio.scale : 1);
 const dist = (k = 1) => (world && world.studio ? world.studio.distance : 2.2) * k;
 
-function startMission(id) {
+function showLoading(text = 'Caricamento del mondo…') {
+  const p = UI.makeInfoPanel({ w: 1.2, h: 0.3, kicker: 'INVIATO SPECIALE VR', text, accent: '#46e0ff' });
+  uiRoot.add(p); placeFront(p, 2.0, -0.05);
+  return p;
+}
+async function whenReady(w) {
+  if (!w || !w.ready) return;
+  const tok = ++loadToken;
+  setPhase('loading');
+  const p = showLoading();
+  try { await Promise.race([w.ready, new Promise((r) => setTimeout(r, 25000))]); } catch (e) { console.warn(e); }
+  if (tok !== loadToken) return false;
+  uiRoot.remove(p); UI.disposeTree(p);
+  return true;
+}
+async function startMission(id) {
   clearUI();
   S.worldId = id;
   loadWorld(id);
+  const w = world;
+  if (await whenReady(w) === false || world !== w) return;
   audio.setDuck(0.45, 0.3);
   setPhase('briefing');
 }
@@ -373,28 +392,14 @@ function finishLive() {
   clearUI();
   audio.setDuck(1, 1.5);
   if (world.postLiveSeconds && !FAST) setPhase('postlive');
-  else startQuiz();
+  else setPhase('afterlive');
 }
 
-function startQuiz() {
-  clearUI();
-  const w = WORLDS[S.worldId];
-  const qp = new UI.QuizPanel(w.quiz, {
-    onDone: showResult, onClick: () => audio.click(),
-    sfx: (ok) => { if (ok) { audio.beep(880, 0.12, 0.22); audio.beep(1320, 0.22, 0.22, 'sine', 0.12); } else audio.beep(200, 0.35, 0.2, 'square'); }
-  });
-  qp.scale.setScalar(sc());
-  uiRoot.add(qp); placeFront(qp, dist(0.92), -0.05);
-  active = qp;
-  audio.setDuck(0.5, 1);
-  setPhase('quiz');
-}
-
-function saveResult(score, total) {
+function saveResult() {
   try {
     const key = 'inviatoSpecialeVR.registro';
     const list = JSON.parse(localStorage.getItem(key) || '[]');
-    list.unshift({ world: S.worldId, score, total, date: new Date().toISOString() });
+    list.unshift({ world: S.worldId, date: new Date().toISOString() });
     localStorage.setItem(key, JSON.stringify(list.slice(0, 200)));
   } catch (e) {}
 }
@@ -410,19 +415,18 @@ function missionButtons(g, y0, { w = 0.74, h = 0.2, cols = 2, gap = 0.03, curren
   });
 }
 
-function showResult(score, total) {
-  saveResult(score, total);
+function showEnd() {
+  saveResult();
   clearUI();
   const w = WORLDS[S.worldId];
-  const msg = score === total ? 'Perfetto! Sei un vero inviato speciale.' : score >= 3 ? 'Ottimo lavoro, inviato! Hai capito bene la notizia.' : 'Missione compiuta, ma rileggi con calma la notizia: alcuni dettagli ti sono sfuggiti.';
   const g = new THREE.Group();
-  const p = UI.makeInfoPanel({ w: 1.6, h: 0.78, kicker: `MISSIONE COMPIUTA  •  ${w.category}`, title: `${score} risposte corrette su ${total}`, text: [msg, STORY_TASK], accent: '#7CFC8A' });
-  p.position.y = 0.3; g.add(p);
+  const p = UI.makeInfoPanel({ w: 1.6, h: 0.66, kicker: `SERVIZIO CONCLUSO  •  ${w.category}`, title: 'Collegamento chiuso. Ottimo lavoro, inviato!', text: STORY_TASK, accent: '#7CFC8A' });
+  p.position.y = 0.34; g.add(p);
   const lab = new UI.CanvasPlane(1.6, 0.08, { px: 1200 });
   lab.draw((c, cw, ch) => { c.fillStyle = '#ffd400'; c.font = `800 ${ch * 0.6}px ${UI.FONT}`; c.textBaseline = 'middle'; c.fillText('PROSSIMA MISSIONE', 10, ch / 2); });
-  lab.position.y = -0.14; g.add(lab);
-  missionButtons(g, -0.3, { w: 0.78, h: 0.16, current: S.worldId });
-  const mk = (label, x, bg, hover, fn) => { const b = new UI.Button(label, { w: 0.5, h: 0.12, bg, hover, size: 0.38, onSelect: () => { audio.click(); fn(); } }); b.position.set(x, -0.7, 0.01); g.add(b); };
+  lab.position.y = -0.06; g.add(lab);
+  missionButtons(g, -0.22, { w: 0.78, h: 0.16, current: S.worldId });
+  const mk = (label, x, bg, hover, fn) => { const b = new UI.Button(label, { w: 0.5, h: 0.12, bg, hover, size: 0.38, onSelect: () => { audio.click(); fn(); } }); b.position.set(x, -0.62, 0.01); g.add(b); };
   mk('RIFAI LA MISSIONE', -0.54, '#374151', '#4b5563', () => startMission(S.worldId));
   mk('REDAZIONE', 0, '#1d4ed8', '#2563eb', showHub);
   mk('ESCI', 0.54, '#b91c1c', '#dc2626', exitAll);
@@ -435,25 +439,26 @@ function showResult(score, total) {
 }
 
 // ---------- redazione (punto di partenza in VR) ----------
-function showHub() {
+async function showHub() {
   clearUI();
   loadWorld('newsroom');
+  const w = world;
+  if (await whenReady(w) === false || world !== w) return;
   audio.setDuck(1, 0.5);
   setPhase('hub');
+  // la scelta della missione si fa sulla parete video della redazione: qui solo un piccolo pannello sulla scrivania
   const g = new THREE.Group();
-  const head = new UI.CanvasPlane(1.56, 0.2, { px: 1400 });
-  head.draw((c, w, h) => { c.fillStyle = '#c1121f'; UI.roundRect(c, 0, 0, w, h, 30); c.fill(); c.fillStyle = '#fff'; c.font = `900 ${h * 0.42}px ${UI.FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('REDAZIONE  •  SCEGLI LA MISSIONE', w / 2, h / 2); });
-  head.position.y = 0.5; g.add(head);
-  missionButtons(g, 0.26, { w: 0.77, h: 0.22 });
-  const imm = new UI.Button('', { w: 0.77, h: 0.12, bg: '#374151', hover: '#4b5563', size: 0.34, onSelect: () => {
+  const info = UI.makeInfoPanel({ w: 1.3, h: 0.3, kicker: 'REDAZIONE', text: 'Punta uno dei grandi schermi sulla parete e premi il grilletto per partire. Puoi anche camminare con la levetta destra.', accent: '#ffd400' });
+  info.position.y = 0.08; g.add(info);
+  const immLabel = () => `IMMERSIONE: ${S.immersion === 60 ? '1 MINUTO' : S.immersion === 90 ? '1 MIN E MEZZO' : '2 MINUTI'}`;
+  const imm = new UI.Button(immLabel(), { w: 0.63, h: 0.11, bg: '#374151', hover: '#4b5563', size: 0.36, onSelect: () => {
     audio.click(); S.immersion = S.immersion >= 120 ? 60 : S.immersion + 30; imm.setLabel(immLabel()); syncForm();
   } });
-  const immLabel = () => `IMMERSIONE: ${S.immersion === 60 ? '1 MINUTO' : S.immersion === 90 ? '1 MINUTO E MEZZO' : '2 MINUTI'}`;
-  imm.setLabel(immLabel());
-  imm.position.set(-0.4, -0.3, 0.01); g.add(imm);
-  const ex = new UI.Button('ESCI', { w: 0.77, h: 0.12, bg: '#b91c1c', hover: '#dc2626', onSelect: exitAll });
-  ex.position.set(0.4, -0.3, 0.01); g.add(ex);
-  uiRoot.add(g); placeFront(g, 2.0, -0.08);
+  imm.position.set(-0.33, -0.16, 0.01); g.add(imm);
+  const ex = new UI.Button('ESCI', { w: 0.63, h: 0.11, bg: '#b91c1c', hover: '#dc2626', size: 0.4, onSelect: exitAll });
+  ex.position.set(0.33, -0.16, 0.01); g.add(ex);
+  uiRoot.add(g); placeFront(g, 1.4, -0.55);
+  g.rotation.x = 0; g.lookAt && null;
   active = g;
 }
 
@@ -461,7 +466,7 @@ function showHub() {
 function togglePause() {
   if (mode === 'idle') return;
   if (pauseMenu) { closePause(); return; }
-  if (phase === 'hub') { recenter(); return; }
+  if (phase === 'hub' || phase === 'loading') { recenter(); return; }
   audio.click();
   paused = true;
   uiRoot.children.forEach((o) => { if (o !== pauseMenu) o.userData.hiddenByPause = o.visible, o.visible = false; });
@@ -494,7 +499,7 @@ function closePause() {
   if (!pauseMenu) return;
   uiRoot.remove(pauseMenu); UI.disposeTree(pauseMenu); pauseMenu = null; paused = false;
   uiRoot.children.forEach((o) => { if (o.userData.hiddenByPause !== undefined) { o.visible = o.userData.hiddenByPause; delete o.userData.hiddenByPause; } });
-  audio.setDuck(phase === 'live' ? 0.55 : phase === 'quiz' || phase === 'result' || phase === 'briefing' ? 0.5 : 1, 0.6);
+  audio.setDuck(phase === 'live' ? 0.55 : phase === 'end' || phase === 'result' || phase === 'briefing' ? 0.5 : 1, 0.6);
 }
 
 function exitAll() {
@@ -511,7 +516,8 @@ function updateMission(dt) {
       break;
     case 'countdown': updateCountdown(); break;
     case 'live': if (prompter) prompter.update(dt, 0); break;
-    case 'postlive': if (phaseT >= world.postLiveSeconds) startQuiz(); break;
+    case 'postlive': if (phaseT >= world.postLiveSeconds) showEnd(); break;
+    case 'afterlive': if (phaseT >= 2.5) showEnd(); break;
   }
   updateStudio(dt);
 }
@@ -596,10 +602,10 @@ function renderRegistro() {
   const box = $('#registro-body');
   let list = [];
   try { list = JSON.parse(localStorage.getItem('inviatoSpecialeVR.registro') || '[]'); } catch (e) {}
-  if (!list.length) { box.innerHTML = '<tr><td colspan="3" class="empty">Nessuna missione completata su questo dispositivo.</td></tr>'; return; }
+  if (!list.length) { box.innerHTML = '<tr><td colspan="2" class="empty">Nessuna missione completata su questo dispositivo.</td></tr>'; return; }
   box.innerHTML = list.slice(0, 40).map((r) => {
     const d = new Date(r.date);
-    return `<tr><td>${NAMES[r.world] || ''}</td><td><b>${r.score}/${r.total}</b></td><td>${d.toLocaleDateString('it-IT')} ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</td></tr>`;
+    return `<tr><td>${NAMES[r.world] || ''} – ${WORLDS[r.world] ? WORLDS[r.world].title : ''}</td><td>${d.toLocaleDateString('it-IT')} ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</td></tr>`;
   }).join('');
 }
 $('#btn-clear').addEventListener('click', () => {
@@ -632,7 +638,9 @@ renderer.setAnimationLoop(() => {
 });
 
 if (DEBUG) window.__isvr = {
-  S, startMission, startPreview, beginImmersion, finishLive, startQuiz, showHub, togglePause,
+  S, startMission, startPreview, beginImmersion, finishLive, showEnd, showHub, togglePause,
   get phase() { return phase; }, get world() { return world; }, get active() { return active; },
-  skip: (s = 1000) => { phaseT += s; }, look: (y, p = 0) => { yaw = y; pitch = p; }
+  skip: (s = 1000) => { phaseT += s; }, look: (y, p = 0) => { yaw = y; pitch = p; },
+  THREE,
+  info: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, tex: renderer.info.memory.textures, progs: renderer.info.programs.length })
 };

@@ -1,4 +1,4 @@
-// Interfaccia in VR: pannelli su canvas, pulsanti, telecamera, conto alla rovescia, gobbo, quiz.
+// Interfaccia in VR: pannelli su canvas, pulsanti, telecamera, conto alla rovescia, gobbo.
 import * as THREE from 'three';
 
 export const FONT = 'Roboto, "Segoe UI", "Helvetica Neue", Arial, sans-serif';
@@ -111,14 +111,17 @@ export class Button extends CanvasPlane {
 
 export function disposeTree(root) {
   root.traverse((o) => {
-    if (o instanceof Button) interactives.delete(o);
+    interactives.delete(o);
     if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
     const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
     for (const m of mats) {
       if (m.userData && m.userData.shared) continue;
-      for (const k of ['map', 'emissiveMap', 'alphaMap']) if (m[k] && !(m[k].userData && m[k].userData.shared)) m[k].dispose();
+      for (const k of Object.keys(m)) { const v = m[k]; if (v && v.isTexture && !(v.userData && v.userData.shared)) v.dispose(); }
+      if (m.uniforms) for (const u of Object.values(m.uniforms)) { const v = u && u.value; if (v && v.isTexture && !(v.userData && v.userData.shared)) v.dispose(); }
       m.dispose();
     }
+    if (o.userData && o.userData.rt) o.userData.rt.dispose();
+    if (o.isSkinnedMesh && o.skeleton) o.skeleton.dispose();
   });
 }
 
@@ -172,7 +175,7 @@ export function makeTVCamera(lensHeight = 1.5, { label = true } = {}) {
   }
   const head = new THREE.Group(); head.position.y = headY; g.add(head);
   const pan = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.08, 12), dark); head.add(pan);
-  const yawG = new THREE.Group(); head.add(yawG);
+  const yawG = new THREE.Group(); yawG.userData.dynamic = true; head.add(yawG);
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.28, 0.52), dark); body.position.set(0, 0.2, -0.05); yawG.add(body);
   const top = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.3), mid); top.position.set(0, 0.37, -0.05); yawG.add(top);
   const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.1, 0.28, 20), mid);
@@ -345,70 +348,5 @@ export class Teleprompter extends THREE.Group {
     this.apply();
     const k = Math.floor(this.t * 1.5);
     if (k !== this._hk) { this._hk = k; this.drawHeader(this.t); }
-  }
-}
-
-// ---------- Prova finale (quiz) ----------
-export class QuizPanel extends THREE.Group {
-  constructor(questions, { onDone, onClick, sfx } = {}) {
-    super();
-    this.qs = questions; this.i = 0; this.score = 0; this.onDone = onDone; this.onClick = onClick; this.sfx = sfx;
-    this.bg = new THREE.Mesh(new THREE.PlaneGeometry(1.74, 1.42), new THREE.MeshBasicMaterial({ color: 0x070b14, transparent: true, opacity: 0.94, fog: false, depthTest: false, depthWrite: false }));
-    this.bg.renderOrder = 19;
-    this.bg.position.set(0, -0.08, -0.01); this.add(this.bg);
-    this.qPanel = new CanvasPlane(1.6, 0.42, { px: 1400 }); this.qPanel.position.set(0, 0.42, 0); this.add(this.qPanel);
-    this.opts = [];
-    for (let k = 0; k < 3; k++) {
-      const b = new Button('', { w: 1.5, h: 0.17, bg: '#1e3a8a', hover: '#2f5bd3', size: 0.34, align: 'left', onSelect: () => this.answer(k) });
-      b.position.set(0, 0.1 - k * 0.2, 0.002); this.add(b); this.opts.push(b);
-    }
-    this.fb = new CanvasPlane(1.6, 0.2, { px: 1400 }); this.fb.position.set(0, -0.53, 0); this.add(this.fb);
-    this.next = new Button('AVANTI ▶', { w: 0.5, h: 0.13, bg: '#15803d', hover: '#16a34a', onSelect: () => { this.onClick && this.onClick(); this.advance(); } });
-    this.next.position.set(0.52, -0.71, 0.002); this.add(this.next);
-    this.show();
-  }
-  show() {
-    const q = this.qs[this.i];
-    this.answered = false;
-    this.order = [0, 1, 2].sort(() => Math.random() - 0.5);
-    this.qPanel.draw((c, w, h) => {
-      c.textBaseline = 'top'; c.textAlign = 'left';
-      c.font = `800 38px ${FONT}`; c.fillStyle = '#ffd400';
-      c.fillText(`PROVA FINALE • DOMANDA ${this.i + 1} DI ${this.qs.length}`, 40, 18);
-      c.font = `700 38px ${FONT}`; c.fillStyle = '#7CFC8A'; c.textAlign = 'right';
-      c.fillText(`PUNTI: ${this.score}`, w - 40, 18);
-      c.textAlign = 'left';
-      let fs = 56;
-      for (; fs > 30; fs -= 2) { c.font = `800 ${fs}px ${FONT}`; if (wrapLines(c, q.q, w - 80).length * fs * 1.22 <= h - 100) break; }
-      drawBlocks(c, [{ text: q.q, font: `800 ${fs}px ${FONT}`, color: '#fff', lh: fs * 1.22 }], 40, 86, w - 80);
-    });
-    this.opts.forEach((b, k) => { b.setLabel(['A', 'B', 'C'][k] + '.  ' + q.options[this.order[k]]); b.setState(null); b.setEnabled(true); });
-    this.fb.draw(() => {});
-    this.next.visible = false;
-  }
-  answer(k) {
-    if (this.answered) return;
-    this.answered = true;
-    const q = this.qs[this.i];
-    const chosen = this.order[k];
-    const ok = chosen === q.correct;
-    if (ok) this.score++;
-    this.sfx && this.sfx(ok);
-    this.opts.forEach((b, j) => {
-      b.setEnabled(false);
-      if (this.order[j] === q.correct) b.setState('ok'); else if (j === k) b.setState('bad'); else b.setState('dim');
-    });
-    this.fb.draw((c, w, h) => {
-      c.textBaseline = 'top'; c.textAlign = 'left';
-      c.font = `900 44px ${FONT}`; c.fillStyle = ok ? '#7CFC8A' : '#ff8a8a';
-      c.fillText(ok ? 'ESATTO!' : 'NON PROPRIO…', 40, 6);
-      drawBlocks(c, [{ text: q.explain, font: `500 34px ${FONT}`, color: '#e6edf7', lh: 42 }], 40, 60, w - 80);
-    });
-    this.next.setLabel(this.i < this.qs.length - 1 ? 'AVANTI ▶' : 'RISULTATO ▶');
-    this.next.visible = true;
-  }
-  advance() {
-    if (this.i < this.qs.length - 1) { this.i++; this.show(); }
-    else this.onDone && this.onDone(this.score, this.qs.length);
   }
 }

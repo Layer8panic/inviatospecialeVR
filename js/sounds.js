@@ -7,11 +7,15 @@ export const SND = {
   stadioPartita: { url: IA('aporee_14231_16569', 'mariborStadion010812.mp3'), credit: 'Stadio di Maribor, partita – Radio Aporee (CC BY-SA 3.0)' },
   stadioGol: { url: IA('aporee_67254_77805', '2504140121.mp3'), credit: 'Napoli, esultanza per un gol – Radio Aporee (pubblico dominio)' },
   stadioTifosi: { url: IA('aporee_68707_79698', 'fanwall.mp3'), credit: 'Muro di tifosi – Radio Aporee (CC BY-NC 3.0)' },
+  coriSpagnoli: { url: IA('aporee_29058_33453', 'SpanishSoccerFans3july2010.mp3'), credit: 'Tifosi spagnoli che cantano – Thijs Geritz, Radio Aporee (pubblico dominio)' },
+  coriItaliani: { url: IA('aporee_33275_38260', '1606270349.mp3'), credit: 'Cori di tifosi – LIGNA, Radio Aporee (pubblico dominio)' },
   // CRONACA
   etna: { url: IA('aporee_63879_73648', 'AtnaGeofon02.mp3'), credit: 'Etna, cratere – Radio Aporee (pubblico dominio)' },
   eruzione: { url: IA('aporee_15469_18016', 'P1020464.mp3'), credit: 'Eruzione del Fimmvörðuháls – Radio Aporee (CC BY-SA 3.0)' },
   cittaSirene: { url: IA('aporee_63877_73646', 'CataniaStreetTrafficPiazzaSavoa1700.mp3'), credit: 'Catania, ambulanza e traffico – Radio Aporee (pubblico dominio)' },
   mareNapoli: { url: IA('aporee_67253_77804', 'zeetegenrotsen.mp3'), credit: 'Napoli, mare sugli scogli – Radio Aporee (pubblico dominio)' },
+  folla: { url: IA('aporee_41092_46889', 'CROWDWALLALargePlaceTouristsRestaurantDishesFewBirdsSpainLOOP.mp3'), credit: 'Folla in una grande piazza – Vincent Fliniaux, Radio Aporee (CC BY 3.0)' },
+  follaInMovimento: { url: IA('aporee_19938_74306', 'soundmap202405247.mp3'), credit: 'Camminando in mezzo alla folla – Wu Tsan-Cheng, Radio Aporee (CC BY-NC-ND 3.0)' },
   elicottero: { url: IA('aporee_25260_29294', 'Hubschrauberstehtundstartet.mp3'), credit: 'Elicottero – Radio Aporee (pubblico dominio)' },
   elicotteroPolizia: { url: IA('aporee_6766_8436', 'CityCountryMeTempelhoferFeldpolizeihubschrauber.mp3'), credit: 'Elicottero della polizia – Radio Aporee (CC BY-SA 3.0)' },
   // SCIENZA
@@ -23,5 +27,8 @@ export const SND = {
   mercatino: { url: IA('aporee_55417_63325', 'PotsdamerStrae25122021.mp3'), credit: 'Mercatino di Natale, Berlino – Radio Aporee (pubblico dominio)' },
   jingle: { url: IA('jamendo-275507', '01-1185392-Milles-Jingle Bells.mp3'), credit: 'Milles, «Jingle Bells» – Jamendo (CC BY 3.0)' },
   blackout: { url: IA('aporee_23042_26783', '1405171272blackoutaporee.mp3'), credit: 'Blackout, sirena e ambiente – Radio Aporee (CC BY-NC-ND 3.0)' },
+  // REDAZIONE
+  macchinaScrivere: { url: IA('aporee_18222_21168', '5typewriterLast185junij13912.mp3'), credit: 'Macchina da scrivere – OR poiesis, Radio Aporee (pubblico dominio)' },
+  ufficio: { url: IA('aporee_5884_7370', 'neoscenes1211406real.mp3'), credit: 'Ufficio – hopkins / neoscenes, Radio Aporee (CC BY-SA 3.0)' },
   sirenaNY: { url: IA('aporee_63719_73383', '1083XYNEWYORKclosePDsiren230905at0515117.mp3'), credit: 'Sirena della polizia di New York – Radio Aporee (pubblico dominio)' }
 };
