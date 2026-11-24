@@ -17,7 +17,16 @@ const FAST = params.has('fast');
 const DEBUG = FAST || params.has('debug');
 
 // ---------- renderer e scena ----------
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+} catch (e) {
+  const st = document.getElementById('vr-status');
+  if (st) { st.textContent = 'Questo browser non riesce ad attivare la grafica 3D (WebGL). Prova con Chrome o Edge aggiornati, oppure dal browser del Meta Quest.'; st.style.color = '#fca5a5'; }
+  document.querySelectorAll('#btn-vr,#btn-hub,#btn-preview').forEach(b => { b.disabled = true; b.style.opacity = 0.5; });
+  window.__isvrNoGL = true;
+  throw e;
+}
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.xr.enabled = true;
