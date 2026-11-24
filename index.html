@@ -69,8 +69,8 @@
 <div id="app"></div>
 
 <div id="hud">
-  <div class="tip">Anteprima su schermo: trascina per guardarti intorno, clicca sui pulsanti, rotellina o frecce per scorrere il gobbo, R per riportare i pannelli davanti.</div>
-  <button id="btn-exit-preview" type="button">✕ Esci</button>
+  <div class="tip">Trascina per guardarti intorno · W A S D o frecce per spostarti · Q / E per girarti · clicca sui pulsanti · rotellina per scorrere il gobbo · M o Esc per il menu</div>
+  <div style="display:flex;gap:8px"><button id="btn-menu-preview" type="button">≡ Menu</button><button id="btn-exit-preview" type="button">✕ Esci</button></div>
 </div>
 
 <div id="overlay">
@@ -105,12 +105,8 @@
       </button>
     </div>
 
-    <h2>2 · Chi è l'inviato?</h2>
+    <h2>2 · Impostazioni</h2>
     <div class="row">
-      <div>
-        <label for="reporter">Nome dello studente (compare in sovrimpressione)</label>
-        <input id="reporter" maxlength="28" placeholder="Es. Giulia R." autocomplete="off">
-      </div>
       <div>
         <label for="immersion">Tempo di immersione prima della diretta</label>
         <select id="immersion">
@@ -122,7 +118,8 @@
     </div>
 
     <div class="actions">
-      <button id="btn-vr" class="btn btn-vr" type="button">ENTRA IN VR</button>
+      <button id="btn-vr" class="btn btn-vr" type="button">ENTRA IN VR NELLA MISSIONE SCELTA</button>
+      <button id="btn-hub" class="btn btn-sec" type="button">Entra in redazione e scegli nel visore</button>
       <button id="btn-preview" class="btn btn-sec" type="button">Anteprima su schermo (PC / LIM)</button>
     </div>
     <p class="status" id="vr-status">Controllo il visore…</p>
@@ -140,10 +137,11 @@
       <summary>Comandi nel visore (Meta Quest 3)</summary>
       <ul>
         <li><b>Grilletto</b> (o pizzico con le mani): premere i pulsanti puntando il raggio.</li>
-        <li><b>Levetta</b> su e giù: far scorrere il testo del gobbo a mano.</li>
+        <li><b>Levetta destra</b>: spostarsi nella direzione in cui si guarda, in modo fluido.</li>
+        <li><b>Levetta sinistra</b>: girare la visuale in modo continuo, senza scatti. In diretta, su e giù fa scorrere il gobbo.</li>
+        <li><b>Tasto Y o B</b>, oppure il pulsante <b>≡ MENU</b> sul polso sinistro: apre il menu (riprendi, ricomincia, cambia mondo, redazione, esci).</li>
+        <li><b>Tasto laterale (grip)</b>: riporta i pannelli davanti agli occhi.</li>
         <li>Sul gobbo: <b>SU / GIÙ</b>, <b>PAUSA / AVVIA</b>, <b>LENTO / VELOCE</b>, <b>HO FINITO</b>.</li>
-        <li><b>Tasto laterale (grip)</b>: riporta i pannelli davanti agli occhi se lo studente si è girato.</li>
-        <li>Per uscire: pulsante <b>ESCI</b> a fine missione, oppure il tasto Meta del controller.</li>
       </ul>
     </details>
     <details>
@@ -160,10 +158,16 @@
 
     <h2>Registro delle missioni</h2>
     <table>
-      <thead><tr><th>Inviato</th><th>Missione</th><th>Punti</th><th>Data</th></tr></thead>
+      <thead><tr><th>Missione</th><th>Punti</th><th>Data</th></tr></thead>
       <tbody id="registro-body"></tbody>
     </table>
     <p><button id="btn-clear" class="btn btn-sec" type="button" style="font-size:14px;padding:8px 14px">Cancella registro</button></p>
+
+    <details>
+      <summary>Crediti di suoni e immagini</summary>
+      <ul id="crediti"></ul>
+      <p class="small">Texture fotografiche: <a href="https://polyhaven.com">Poly Haven</a> (CC0). Terra ed erba: esempi di three.js. Le registrazioni vengono caricate da archive.org durante l'esperienza: serve la connessione a internet.</p>
+    </details>
 
     <footer>Inviato Speciale VR · progetto didattico di giornalismo immersivo · <a href="https://github.com/Layer8panic/inviatospecialeVR">codice su GitHub</a></footer>
   </div>

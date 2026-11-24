@@ -8,7 +8,7 @@ Giornalismo immersivo in realtà virtuale per la scuola. Lo studente indossa il 
 
 1. Sul visore apri l'app **Browser**.
 2. Vai all'indirizzo qui sopra (conviene salvarlo nei preferiti).
-3. Scegli la missione, scrivi il nome dello studente e premi **ENTRA IN VR**.
+3. Scegli la missione e premi **ENTRA IN VR**, oppure entra in redazione e scegli il mondo nel visore.
 
 Non serve installare niente: è una pagina WebXR. L'audio è generato dal browser, quindi tieni il volume del visore acceso.
 
@@ -17,9 +17,13 @@ Non serve installare niente: è una pagina WebXR. L'audio è generato dal browse
 | Comando | Azione |
 | --- | --- |
 | Grilletto (o pizzico con le mani) | premere i pulsanti puntando il raggio |
-| Levetta su/giù | scorrere il testo del gobbo |
+| Levetta destra | spostarsi in modo fluido nella direzione in cui si guarda |
+| Levetta sinistra | girare la visuale in modo continuo, senza scatti; in diretta su/giù scorre il gobbo |
+| Tasto Y o B, oppure ≡ MENU sul polso sinistro | menu: riprendi, ricomincia, vai alla diretta, cambia mondo, redazione, esci |
 | Tasto laterale (grip) | riportare i pannelli davanti agli occhi |
 | Pulsanti sul gobbo | SU, GIÙ, PAUSA/AVVIA, LENTO, VELOCE, HO FINITO |
+
+Dalla pagina iniziale si può entrare direttamente nella missione scelta oppure in **redazione**, dove si sceglie il mondo dentro il visore. A fine missione si passa al mondo successivo con un clic.
 
 ## Struttura di ogni missione
 
@@ -38,17 +42,23 @@ Non serve installare niente: è una pagina WebXR. L'audio è generato dal browse
 
 ## Anteprima su schermo
 
-Il pulsante **Anteprima su schermo** fa partire l'esperienza su PC o LIM: si trascina per guardarsi intorno e si clicca sui pulsanti. Rotellina o frecce scorrono il gobbo, `R` riporta i pannelli davanti, `Esc` esce.
+Il pulsante **Anteprima su schermo** fa partire l'esperienza su PC o LIM: si trascina per guardarsi intorno, W A S D o frecce per spostarsi, Q ed E per girarsi, si clicca sui pulsanti. La rotellina scorre il gobbo, `M` o `Esc` aprono il menu.
 
 ## Registro
 
 A fine missione il punteggio viene salvato nel registro della pagina iniziale (solo su quel dispositivo, nel browser).
 
+## Suoni e immagini
+
+- I suoni ambientali sono **registrazioni reali** caricate da archive.org durante l'esperienza (serve internet): curve di stadio, il cratere dell'Etna e un'eruzione vera, traffico e ambulanze di Catania, il mare di Napoli, elicotteri, il conto alla rovescia e il lancio dell'Apollo (NASA, pubblico dominio), una passeggiata registrata a Times Square, sirene della polizia di New York. Se una registrazione non si carica parte un suono sintetico di riserva.
+- L'elenco completo con autori e licenze è nella pagina iniziale, alla voce «Crediti di suoni e immagini», e in `js/sounds.js`.
+- Texture fotografiche (asfalto, asfalto innevato, pietra, roccia vulcanica, suolo marziano) da [Poly Haven](https://polyhaven.com), CC0. Terra ed erba dagli esempi di three.js, inclusi nella cartella `assets/`.
+
 ## Dettagli tecnici
 
 - WebXR con [three.js](https://threejs.org/) 0.160 caricato da CDN (jsDelivr).
-- Tutti i suoni (folla, sirene, motori, musica, radio) sono sintetizzati con la Web Audio API, con audio spaziale. Le voci usano la sintesi vocale del browser, dove disponibile.
-- Nessuna immagine o file audio esterno: ambienti e testi sono generati nel codice.
-- Pubblicato con GitHub Pages dalla radice del branch.
+- Audio spaziale con Web Audio API: ogni sorgente arriva dalla sua direzione (il vulcano, il mare, gli elicotteri, le sirene).
+- I pannelli (briefing, gobbo, prova finale, menu) sono sempre disegnati sopra la scena, così nessun oggetto o persona può coprire il testo.
+- Pubblicato con GitHub Pages.
 
 Parametri utili per i test: `?fast` accorcia l'immersione a 8 secondi, `?debug` abilita il tasto `N` per saltare la fase corrente in anteprima.

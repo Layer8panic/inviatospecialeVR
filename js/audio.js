@@ -107,8 +107,10 @@ export class AudioEngine {
 
   click() { this.beep(1400, 0.05, 0.12, 'triangle'); }
 
+  hasVoice(lang = 'it') { return this.voices.some((v) => v.lang && v.lang.toLowerCase().startsWith(lang)); }
+
   say(text, { lang = 'it-IT', rate = 1, pitch = 1, volume = 1 } = {}) {
-    if (!('speechSynthesis' in window)) return;
+    if (!('speechSynthesis' in window) || !this.hasVoice(lang.slice(0, 2))) return;
     try {
       const u = new SpeechSynthesisUtterance(text);
       u.lang = lang; u.rate = rate; u.pitch = pitch; u.volume = volume;
@@ -134,7 +136,37 @@ export class SoundScope {
     this.out.gain.setValueAtTime(0, this.c.currentTime);
     this.out.gain.linearRampToValueAtTime(1, this.c.currentTime + 2);
     this.out.connect(e.amb);
-    this.srcs = new Set(); this.timers = []; this.alive = true;
+    this.srcs = new Set(); this.timers = []; this.alive = true; this.media = [];
+  }
+  // Registrazione reale in streaming (archive.org ecc.), con dissolvenza e partenza da un punto casuale
+  stream(url, { gain = 1, dest = this.out, loop = true, random = true, start = 0, onFail, rate = 1 } = {}) {
+    const el = new Audio();
+    el.crossOrigin = 'anonymous'; el.loop = loop; el.preload = 'auto'; el.playbackRate = rate;
+    const h = { el, ok: false, failed: false, target: gain };
+    const fail = () => { if (h.failed || h.ok) return; h.failed = true; if (onFail && this.alive) onFail(); };
+    try {
+      h.src = this.c.createMediaElementSource(el);
+      h.g = this.gain(0, dest); h.src.connect(h.g);
+    } catch (e) { fail(); return h; }
+    el.addEventListener('loadedmetadata', () => {
+      if (start) el.currentTime = start;
+      else if (random && isFinite(el.duration) && el.duration > 30) el.currentTime = Math.random() * (el.duration - 20);
+    }, { once: true });
+    el.addEventListener('playing', () => { h.ok = true; });
+    el.addEventListener('error', fail);
+    el.src = url;
+    const go = () => { if (this.alive) { const p = el.play(); if (p && p.catch) p.catch(() => {}); } };
+    go(); el.addEventListener('canplay', () => { if (el.paused) go(); }, { once: true });
+    const t = this.c.currentTime;
+    h.g.gain.setValueAtTime(0, t); h.g.gain.linearRampToValueAtTime(gain, t + 2.5);
+    this.after(10000, () => { if (!h.ok) fail(); });
+    this.media.push(h);
+    return h;
+  }
+  fade(h, v, secs = 1) {
+    if (!h || !h.g) return;
+    const t = this.c.currentTime, g = h.g.gain;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(v, t + secs);
   }
   get t() { return this.c.currentTime; }
   gain(v = 1, dest) { const g = this.c.createGain(); g.gain.value = v; if (dest) g.connect(dest); return g; }
@@ -181,6 +213,8 @@ export class SoundScope {
     const t = this.c.currentTime, g = this.out.gain;
     g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0, t + f);
     setTimeout(() => {
+      this.media.forEach((h) => { try { h.el.pause(); h.el.removeAttribute('src'); h.el.load(); } catch (e) {} try { h.src && h.src.disconnect(); } catch (e) {} });
+      this.media = [];
       this.srcs.forEach((s) => { try { s.stop(); } catch (e) {} try { s.disconnect(); } catch (e) {} });
       this.srcs.clear();
       try { this.out.disconnect(); } catch (e) {}

@@ -1,7 +1,8 @@
 // SCIENZA – Destinazione Marte: l'umanità conquista lo spazio
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { rng, canvasTex, skyDome, starField, makeGlow, glowTexture, lambert, makePerson, animatePerson, smooth, lerp } from './common.js';
+import { rng, canvasTex, skyDome, starField, makeGlow, glowTexture, lambert, makePerson, animatePerson, smooth, lerp, fitText, photoMat, applyTex, PH, LOCAL } from './common.js';
+import { SND } from '../sounds.js';
 import * as A from '../audio.js';
 
 function planetTex(kind) {
@@ -70,8 +71,14 @@ export function createMars() {
     cl.position.set(Math.cos(a) * d, 120 + R() * 500, Math.sin(a) * d); cl.scale.set(120 + R() * 160, 50 + R() * 50, 1);
     ext.add(cl); clouds.push(cl);
   }
-  const earth = new THREE.Mesh(new THREE.SphereGeometry(60, 48, 32), new THREE.MeshLambertMaterial({ map: planetTex('earth') }));
-  earth.visible = false; ext.add(earth);
+  const earthM = new THREE.MeshPhongMaterial({ map: planetTex('earth'), shininess: 25, specular: 0x333333 });
+  applyTex(earthM, LOCAL('earth_atmos_2048.jpg'));
+  applyTex(earthM, LOCAL('earth_specular_2048.jpg'), { slot: 'specularMap', color: false });
+  const earth = new THREE.Mesh(new THREE.SphereGeometry(60, 64, 48), earthM);
+  const cloudM = new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.9, depthWrite: false });
+  applyTex(cloudM, LOCAL('earth_clouds_1024.png'));
+  const clouds2 = new THREE.Mesh(new THREE.SphereGeometry(60.8, 64, 48), cloudM); clouds2.visible = false;
+  earth.visible = false; ext.add(earth); earth.add(clouds2); clouds2.visible = true;
   const atmo = makeGlow(0x6fb6ff, 160, 0.6); earth.add(atmo); atmo.position.set(0, 0, -5);
   const mars = new THREE.Mesh(new THREE.SphereGeometry(60, 48, 32), new THREE.MeshLambertMaterial({ map: planetTex('mars') }));
   mars.visible = false; ext.add(mars);
@@ -126,8 +133,9 @@ export function createMars() {
     c.strokeStyle = '#38e1ff'; c.lineWidth = 4; c.beginPath();
     for (let x = 0; x < w; x += 8) c.lineTo(x, 360 + Math.sin(x * 0.03 + performance.now() * 0.002) * 40);
     c.stroke();
-    c.fillStyle = warn ? '#ff5a5a' : '#7CFC8A'; c.font = '900 92px Arial'; c.textAlign = 'center'; c.fillText(title, w / 2, 130);
-    c.fillStyle = '#d8f3ff'; c.font = '700 46px Arial'; c.fillText(line2, w / 2, 220);
+    c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+    c.fillStyle = warn ? '#ff5a5a' : '#7CFC8A'; fitText(c, title, w / 2, 130, w * 0.86, 92);
+    c.fillStyle = '#d8f3ff'; fitText(c, line2, w / 2, 220, w * 0.86, 46, { weight: '700' });
   });
   drawConsole('AURORA', 'VERIFICA SISTEMI');
   const scrM = new THREE.MeshBasicMaterial({ map: screenTex });
@@ -167,12 +175,12 @@ export function createMars() {
     let h = Math.sin(x * 0.012) * Math.cos(z * 0.01) * 6 + Math.sin(x * 0.04 + z * 0.03) * 1.5 + Math.max(0, d - 300) * 0.12 * (0.5 + 0.5 * Math.sin(x * 0.005 + z * 0.004));
     h *= smooth(10, 60, d);
     tp.setY(i, h);
-    cc.set(0xb85a33).offsetHSL((Math.random() - 0.5) * 0.02, 0, (Math.random() - 0.5) * 0.08 + h * 0.004);
+    cc.setScalar(0.85 + Math.random() * 0.12 + h * 0.004);
     tcol.set([cc.r, cc.g, cc.b], i * 3);
   }
   tgeo.setAttribute('color', new THREE.BufferAttribute(tcol, 3)); tgeo.computeVertexNormals();
-  surf.add(new THREE.Mesh(tgeo, new THREE.MeshLambertMaterial({ vertexColors: true })));
-  const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), lambert(0x7a3a22), 380);
+  surf.add(new THREE.Mesh(tgeo, photoMat(PH('red_laterite_soil_stones'), { fallback: 0xb85a33, tint: 0xffd8c0, repeat: [220, 220], vertexColors: true })));
+  const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 1), photoMat(PH('rock_boulder_dry'), { fallback: 0x7a3a22, tint: 0xd08060, repeat: [1, 1] }), 380);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
   for (let i = 0; i < 380; i++) {
     const a = R() * Math.PI * 2, d = 6 + R() * 200, s = 0.15 + R() * R() * 1.6;
@@ -228,13 +236,13 @@ export function createMars() {
       const tt = Math.max(0, T);
       // astronauti
       astros.forEach((a, i) => {
-        const float = tt > 34 ? Math.sin(t * 0.8 + i) * 0.06 + 0.08 : 0;
+        const float = tt > 44 ? Math.sin(t * 0.8 + i) * 0.06 + 0.08 : 0;
         a.position.y = float;
         a.userData.armR.rotation.x = -1.1 + Math.sin(t * 1.7 + i * 2) * 0.35;
         a.userData.armL.rotation.x = -0.9 + Math.cos(t * 1.3 + i) * 0.3;
       });
       // decollo
-      const launch = Math.max(0, tt - 16);
+      const launch = Math.max(0, tt - 26);
       const alt = 0.5 * 18 * launch * launch;
       pad.position.y = -alt;
       pad.visible = alt < 5000;
@@ -243,22 +251,22 @@ export function createMars() {
       sky.lerpColors(0x3d86d6, 0xc4def3, 0x000000, 0x00020a, k);
       stars.material.opacity = smooth(0.4, 1, k);
       sunGlow.material.opacity = smooth(0.5, 1, k) * 0.9;
-      const shakeAmp = launch > 0 && tt < 32 ? 0.012 * (1 - launch / 18) : 0;
+      const shakeAmp = launch > 0 && launch < 16 ? 0.01 * (1 - launch / 16) : 0;
       cabin.position.set((Math.random() - 0.5) * shakeAmp, (Math.random() - 0.5) * shakeAmp, (Math.random() - 0.5) * shakeAmp);
       // Terra che si allontana
-      if (tt > 28 && !landed) {
+      if (tt > 38 && !landed) {
         earth.visible = !post || P < 10;
-        const D = lerp(170, 1400, smooth(28, 160, tt));
+        const D = lerp(170, 1400, smooth(38, 170, tt));
         const dir = new THREE.Vector3(-0.72, -0.28, -0.62).normalize();
         earth.position.copy(dir).multiplyScalar(D);
-        earth.rotation.y += dt * 0.03;
+        earth.rotation.y += dt * 0.03; clouds2.rotation.y += dt * 0.008;
       }
       // console
       if (t - lastConsole > 0.5) {
         lastConsole = t;
-        if (tt >= 6 && tt < 16) drawConsole('T - ' + Math.max(1, Math.ceil(16 - tt)), 'CONTO ALLA ROVESCIA', true);
-        else if (tt >= 16 && tt < 32) drawConsole('DECOLLO', 'VELOCITÀ ' + Math.round(launch * 640) + ' KM/H', tt > 22 && tt < 26);
-        else if (tt >= 32 && !post) drawConsole('ROTTA: MARTE', 'DISTANZA DALLA TERRA: ' + Math.round(earth.position.length() * 120).toLocaleString('it-IT') + ' KM');
+        if (started && tt < 26) drawConsole('T - ' + Math.max(0, Math.ceil(26 - tt)), 'CONTO ALLA ROVESCIA', tt > 16);
+        else if (tt >= 26 && tt < 44) drawConsole('DECOLLO', 'VELOCITÀ ' + Math.round(launch * 640).toLocaleString('it-IT') + ' KM/H', tt > 32 && tt < 36);
+        else if (tt >= 44 && !post) drawConsole('ROTTA: MARTE', 'DISTANZA DALLA TERRA: ' + Math.round(earth.position.length() * 120).toLocaleString('it-IT') + ' KM');
         else if (post && !landed) drawConsole('MARTE', P < 16 ? 'AVVICINAMENTO' : 'DISCESA IN CORSO', P > 16);
         else if (!started) drawConsole('AURORA', 'VERIFICA SISTEMI');
       }
@@ -297,49 +305,56 @@ export function createMars() {
       if (ph === 'postlive') { post = true; P = 0; }
     },
     dispose() { if (fade.parent) fade.parent.remove(fade); fade.geometry.dispose(); fadeM.dispose(); },
+    minImmersion: 75,
+    // in cabina: niente pannelli oltre le pareti
+    panelDist(p, d, want) {
+      if (landed) return want;
+      const R = 2.25, b = p.x * d.x + p.z * d.z, c = p.x * p.x + p.z * p.z - R * R;
+      const t = -b + Math.sqrt(Math.max(0, b * b - c));
+      return Math.max(1.1, Math.min(want, t - 0.2));
+    },
+    bounds(p) {
+      const r = landed ? 60 : 0.9, d = Math.hypot(p.x, p.z);
+      if (d > r) { p.x *= r / d; p.z *= r / d; }
+    },
     startAudio(s) {
       const dest = s.out;
-      const hum = s.osc('sawtooth', 55); const hf = s.filter('lowpass', 180, 1); const hg = s.gain(0.12); hum.connect(hf).connect(hg).connect(dest);
-      A.bed(s, dest, { kind: 'pink', type: 'lowpass', f: 900, q: 0.5, level: 0.06, lfo: 0 });
-      const roarSrc = s.noise('brown'), roarSrc2 = s.noise('white');
-      const rf = s.filter('lowpass', 200, 0.7); const rg = s.gain(0);
-      roarSrc.connect(rf); const wg2 = s.gain(0.15); roarSrc2.connect(wg2).connect(rf); rf.connect(rg).connect(dest);
-      const al = A.alarm(s, dest, 0.08);
-      s.every(2300, () => { if (Math.random() < 0.7) A.beeps(s, dest, s.t, 0.06); });
-      const radio = (txt, vol = 0.8, delay = 0) => s.after(delay, () => { A.squelch(s, dest, s.t, 0.15); s.after(300, () => s.say(txt, { rate: 1.05, pitch: 0.9, volume: inst._phase === 'live' ? Math.min(vol, 0.35) : vol })); });
-      const numbers = ['Dieci', 'Nove', 'Otto', 'Sette', 'Sei', 'Cinque', 'Quattro', 'Tre', 'Due', 'Uno'];
-      const cruise = [
-        'Aurora, qui centro di controllo. Telemetria regolare. Ottimo lavoro, equipaggio.',
-        'Centro di controllo, qui Aurora. Vediamo la Terra dal finestrino. È uno spettacolo.',
-        'Aurora, confermiamo la rotta verso Marte. Prossimo controllo tra dieci minuti.',
-        'Ricevuto, centro di controllo. Strumenti scientifici accesi e pronti.'
-      ];
-      let ci = 0, lastCruise = 0;
+      // aria della cabina: ventole e ronzio degli impianti
+      const hum = s.osc('sawtooth', 55); const hf = s.filter('lowpass', 160, 1); const hg = s.gain(0.08); hum.connect(hf).connect(hg).connect(dest);
+      const fan = A.bed(s, dest, { kind: 'pink', type: 'lowpass', f: 700, q: 0.5, level: 0.07, lfo: 0 });
+      s.every(2600, () => { if (Math.random() < 0.6) A.beeps(s, dest, s.t, 0.05); });
+      const al = A.alarm(s, dest, 0.06);
+      // l'altoparlante di bordo con la sala di controllo (banda telefonica)
+      const radioBus = s.filter('bandpass', 1500, 0.6, dest);
+      // il rombo arriva attutito dentro la cabina
+      const muffled = s.filter('lowpass', 900, 0.7, dest);
+      let countdown = null, roar = null, descent = null;
+      const synthLaunch = () => {
+        if (inst._fb) return; inst._fb = true;
+        const r1 = s.noise('brown'); const rf = s.filter('lowpass', 500, 0.7); const rg = s.gain(0); r1.connect(rf).connect(rg).connect(dest);
+        const t = s.t; rg.gain.setValueAtTime(0.0001, t); rg.gain.linearRampToValueAtTime(1, t + 1.5); rg.gain.setValueAtTime(1, t + 14); rg.gain.linearRampToValueAtTime(0.0001, t + 22);
+      };
       snd = {
         tick(tt, P) {
-          if (tt >= 0.5) once('r0', () => radio('Navicella Aurora, qui centro di controllo. Verifica finale dei sistemi.'));
-          if (tt >= 3.5) once('r1', () => radio('Centro di controllo, qui Aurora. Sistemi nominali, siamo pronti al lancio.'));
-          for (let n = 0; n < 10; n++) if (tt >= 6 + n) once('c' + n, () => { s.e.beep(n === 9 ? 1320 : 880, 0.18, 0.2); s.say(numbers[n], { rate: 1.1, volume: 1 }); });
-          if (tt >= 16) once('ign', () => {
-            s.say('Accensione! Decollo!', { rate: 1.1 });
-            const t = s.t;
-            rg.gain.cancelScheduledValues(t); rg.gain.setValueAtTime(0.0001, t); rg.gain.linearRampToValueAtTime(1.0, t + 1.5); rg.gain.setValueAtTime(1.0, t + 14); rg.gain.linearRampToValueAtTime(0.0001, t + 19);
-            rf.frequency.setValueAtTime(150, t); rf.frequency.linearRampToValueAtTime(900, t + 3); rf.frequency.linearRampToValueAtTime(300, t + 16);
-            A.boom(s, dest, t, 1.1);
+          if (tt >= 1) once('cd', () => { countdown = s.stream(SND.apolloCountdown.url, { gain: 1.0, dest: radioBus, loop: false, random: false }); });
+          if (tt >= 26) once('lift', () => {
+            roar = s.stream(SND.apolloRombo.url, { gain: 1.2, dest: muffled, loop: false, random: false, onFail: synthLaunch });
+            A.boom(s, muffled, s.t, 0.9);
           });
-          if (tt >= 22) once('al', () => { al.on(); s.after(3200, () => al.off()); radio('Separazione del primo stadio completata.', 0.8, 800); });
-          if (tt >= 31) once('orb', () => radio('Aurora, siete fuori dall\'atmosfera. Rotta verso Marte confermata.'));
-          if (tt > 40 && P < 0 && tt - lastCruise > 18) { lastCruise = tt; radio(cruise[ci++ % cruise.length], 0.7); }
-          if (P >= 0.5) once('p0', () => radio('Aurora, qui centro di controllo. Inserimento in orbita marziana tra pochi istanti.'));
-          if (P >= 16) once('p1', () => {
+          if (tt >= 33) once('al', () => { al.on(); s.after(3000, () => al.off()); });
+          if (tt >= 52) once('fade', () => { s.fade(roar, 0, 10); s.fade(countdown, 0.25, 6); });
+          if (tt >= 70) once('fade2', () => s.fade(countdown, 0, 6));
+          if (P >= 6) once('desc', () => { descent = s.stream(SND.discesa.url, { gain: 0.9, dest: radioBus, loop: false, random: false }); });
+          if (P >= 16) once('entry', () => {
             al.on(); s.after(2500, () => al.off());
-            const t = s.t; rg.gain.cancelScheduledValues(t); rg.gain.setValueAtTime(0.0001, t); rg.gain.linearRampToValueAtTime(0.8, t + 1.5); rg.gain.linearRampToValueAtTime(0.0001, t + 7.5);
-            rf.frequency.setValueAtTime(500, t);
-            radio('Inizio discesa. Scudo termico in temperatura.', 0.9, 1000);
+            const r1 = s.noise('brown'); const rf = s.filter('lowpass', 400, 0.7); const rg = s.gain(0); r1.connect(rf).connect(rg).connect(dest);
+            const t = s.t; rg.gain.setValueAtTime(0.0001, t); rg.gain.linearRampToValueAtTime(0.7, t + 2); rg.gain.linearRampToValueAtTime(0.0001, t + 7.5);
           });
-          if (P >= 23) once('p2', () => { hg.gain.setValueAtTime(0.02, s.t); A.bed(s, dest, { kind: 'pink', type: 'bandpass', f: 400, q: 0.4, level: 0.12, lfo: 0.09, depth: 0.6 }); });
-          if (P >= 25) once('p3', () => radio('Atterraggio completato. Benvenuti su Marte, il pianeta rosso!', 1));
-          if (P >= 31) once('p4', () => radio('Centro di controllo, qui Aurora. Iniziamo a raccogliere i primi campioni di terreno.', 0.9));
+          if (P >= 23) once('surf', () => {
+            s.fade(descent, 0, 3);
+            hg.gain.setValueAtTime(0.0, s.t); fan.gain.setValueAtTime(0.0, s.t);
+            A.bed(s, dest, { kind: 'pink', type: 'bandpass', f: 380, q: 0.4, level: 0.14, lfo: 0.09, depth: 0.7 });
+          });
         }
       };
     }

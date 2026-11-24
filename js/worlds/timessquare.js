@@ -1,6 +1,7 @@
 // BREAKING NEWS – Natale al buio a Times Square
 import * as THREE from 'three';
-import { rng, canvasTex, skyDome, starField, makeGlow, lambert, Walkers, makeVehicle, fallingParticles } from './common.js';
+import { rng, canvasTex, skyDome, starField, makeGlow, lambert, Walkers, makeVehicle, fallingParticles, fitText, photoMat, PH, buildingsGeometry } from './common.js';
+import { SND } from '../sounds.js';
 import * as A from '../audio.js';
 import { SoundScope } from '../audio.js';
 
@@ -37,39 +38,50 @@ export function createTimesSquare() {
   const stars = starField(300, 3000, { size: 1.4, minY: 0.3, opacity: 0.0 }); g.add(stars);
 
   // strade e marciapiedi
-  const roadTex = canvasTex(512, 512, (c, w, h) => {
-    c.fillStyle = '#26272b'; c.fillRect(0, 0, w, h);
-    for (let k = 0; k < 600; k++) { c.fillStyle = `rgba(255,255,255,${Math.random() * 0.06})`; c.fillRect(Math.random() * w, Math.random() * h, 3, 3); }
-    c.fillStyle = '#d9d9d9'; c.fillRect(w * 0.49, 0, w * 0.02, h * 0.5);
-  }, { repeat: [1, 40] });
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(20, 520), new THREE.MeshLambertMaterial({ map: roadTex })); road.rotation.x = -Math.PI / 2; road.position.z = 40; g.add(road);
-  const snowM = lambert(0xc9ccd6);
-  for (const x of [-13, 13]) { const s = new THREE.Mesh(new THREE.BoxGeometry(6, 0.18, 520), snowM); s.position.set(x, 0.09, 40); g.add(s); }
-  const plaza = new THREE.Mesh(new THREE.BoxGeometry(6, 0.16, 90), lambert(0x8f2a2a)); plaza.position.set(0, 0.08, 15); g.add(plaza);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(20, 520), photoMat(PH('asphalt_snow'), { fallback: 0x34363c, tint: 0xd8dce6, repeat: [5, 130], normal: PH('asphalt_snow', 'nor_gl') }));
+  road.rotation.x = -Math.PI / 2; road.position.z = 40; g.add(road);
+  const laneTex = canvasTex(64, 256, (c, w, h) => { c.clearRect(0, 0, w, h); c.fillStyle = 'rgba(240,240,240,0.8)'; c.fillRect(0, 0, w, h / 2); }, { repeat: [1, 90] });
+  for (const x of [-3.2, 3.2]) { const l = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 520), new THREE.MeshLambertMaterial({ map: laneTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2 })); l.rotation.x = -Math.PI / 2; l.position.set(x, 0.01, 40); g.add(l); }
+  const walkM = photoMat(PH('snow_floor'), { fallback: 0xc9ccd6, tint: 0xe6e9f0, repeat: [2, 170] });
+  for (const x of [-13, 13]) { const sw = new THREE.Mesh(new THREE.BoxGeometry(6, 0.18, 520), walkM); sw.position.set(x, 0.09, 40); g.add(sw); }
+  const plaza = new THREE.Mesh(new THREE.BoxGeometry(6, 0.16, 90), photoMat(PH('red_sandstone_pavement'), { fallback: 0x8f2a2a, tint: 0xd07070, repeat: [2, 30] })); plaza.position.set(0, 0.08, 15); g.add(plaza);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(800, 800), lambert(0x1a1a1e)); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.05; g.add(ground);
 
   // edifici con finestre illuminate
-  const winTex = canvasTex(256, 512, (c, w, h) => {
-    c.fillStyle = '#000'; c.fillRect(0, 0, w, h);
-    for (let y = 8; y < h; y += 20) for (let x = 6; x < w; x += 16) { if (Math.random() < 0.55) { c.fillStyle = ['#ffe9b0', '#fff6dd', '#cfe3ff'][Math.floor(Math.random() * 3)]; c.fillRect(x, y, 9, 12); } }
+  // grattacieli: una ripetizione della texture = 12 m x 14 m (5 finestre x 4 piani)
+  const facadeTex = canvasTex(512, 600, (c, w, h) => {
+    c.fillStyle = '#15171c'; c.fillRect(0, 0, w, h);
+    for (let fy = 0; fy < 4; fy++) for (let fx = 0; fx < 5; fx++) {
+      const x = fx * w / 5 + 8, y = fy * h / 4 + 14;
+      c.fillStyle = '#262a33'; c.fillRect(x, y, w / 5 - 16, h / 4 - 34);
+      c.fillStyle = '#323844'; c.fillRect(x + 4, y + 4, w / 5 - 24, h / 4 - 42);
+    }
   });
-  const bMat = new THREE.MeshLambertMaterial({ color: 0x23262e, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.55 });
-  const bN = 40, blds = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), bMat, bN);
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), col = new THREE.Color();
-  let bi = 0; const facades = [];
+  const litTex = canvasTex(512, 600, (c, w, h) => {
+    c.fillStyle = '#000'; c.fillRect(0, 0, w, h);
+    const r = rng(5);
+    for (let fy = 0; fy < 4; fy++) for (let fx = 0; fx < 5; fx++) {
+      if (r() < 0.45) continue;
+      const x = fx * w / 5 + 12, y = fy * h / 4 + 18;
+      c.fillStyle = ['#ffe4a8', '#fff3d6', '#cfe0ff', '#ffd27a'][Math.floor(r() * 4)];
+      c.globalAlpha = 0.55 + r() * 0.45; c.fillRect(x, y, w / 5 - 24, h / 4 - 42); c.globalAlpha = 1;
+    }
+  });
+  facadeTex.wrapS = facadeTex.wrapT = litTex.wrapS = litTex.wrapT = THREE.RepeatWrapping;
+  const bMat = new THREE.MeshLambertMaterial({ map: facadeTex, vertexColors: true, emissive: 0xffffff, emissiveMap: litTex, emissiveIntensity: 0.9 });
+  const blist = []; const facades = [];
   for (const side of [-1, 1]) {
-    for (let z = -110; z < 220 && bi < bN - 2; ) {
-      const len = 18 + R() * 20, h = 45 + R() * 110, dep = 30;
-      m4.compose(new THREE.Vector3(side * (16 + dep / 2), h / 2, z + len / 2), q.identity(), new THREE.Vector3(dep, h, len - 0.6));
-      blds.setMatrixAt(bi, m4); col.setHSL(0.6 + R() * 0.1, 0.1, 0.5 + R() * 0.3); blds.setColorAt(bi, col); bi++;
+    for (let z = -110; z < 220; ) {
+      const len = 18 + R() * 20, h = Math.round(4 + R() * 8) * 14, dep = 30;
+      blist.push({ x: side * (16 + dep / 2), y: h / 2, z: z + len / 2, w: dep, h, d: len - 0.6, color: new THREE.Color().setHSL(0.6 + R() * 0.1, 0.1, 0.55 + R() * 0.35).getHex(), u0: Math.floor(R() * 5) / 5 });
       facades.push({ side, z0: z, len, h });
       z += len;
     }
   }
-  // torre in fondo alla piazza
-  m4.compose(new THREE.Vector3(0, 70, -128), q.identity(), new THREE.Vector3(26, 140, 18)); blds.setMatrixAt(bi, m4); col.set(0x30343c); blds.setColorAt(bi++, col);
-  m4.compose(new THREE.Vector3(0, 60, 240), q.identity(), new THREE.Vector3(60, 120, 20)); blds.setMatrixAt(bi, m4); col.set(0x30343c); blds.setColorAt(bi++, col);
-  blds.count = bi; g.add(blds);
+  blist.push({ x: 0, y: 70, z: -128, w: 26, h: 140, d: 18, color: 0x8a90a0 });
+  blist.push({ x: 0, y: 60, z: 240, w: 60, h: 120, d: 20, color: 0x8a90a0 });
+  const blds = new THREE.Mesh(buildingsGeometry(blist, [12, 14]), bMat);
+  g.add(blds);
 
   // maxischermi pubblicitari (marchi inventati)
   const ads = [
@@ -93,10 +105,8 @@ export function createTimesSquare() {
       c.fillStyle = gr; c.fillRect(0, 0, cw, ch);
       if (k) { c.fillStyle = `hsla(${(k * 40) % 360},90%,60%,0.25)`; c.beginPath(); c.arc(cw * (0.5 + 0.4 * Math.sin(k)), ch * 0.5, ch * 0.6, 0, Math.PI * 2); c.fill(); }
       c.fillStyle = ad.fg; c.textAlign = 'center'; c.textBaseline = 'middle';
-      let fs = Math.min(ch * 0.36, 120); c.font = `900 ${fs}px Arial`;
-      while (c.measureText(ad.t).width > cw * 0.92 && fs > 10) { fs -= 4; c.font = `900 ${fs}px Arial`; }
-      c.fillText(ad.t, cw / 2, ch * 0.42);
-      c.font = `700 ${Math.min(ch * 0.13, fs * 0.45)}px Arial`; c.fillText(ad.s, cw / 2, ch * 0.75);
+      const fs = fitText(c, ad.t, cw / 2, ch * 0.42, cw * 0.88, Math.min(ch * 0.36, 120));
+      fitText(c, ad.s, cw / 2, ch * 0.76, cw * 0.88, Math.min(ch * 0.13, fs * 0.5), { weight: '700' });
     });
     draw();
     const m = new THREE.MeshBasicMaterial({ map: tex });
@@ -124,10 +134,12 @@ export function createTimesSquare() {
     mesh.position.set(0, 12 + k * 11, -118.9); g.add(mesh); animated.push(draw);
   }
   // ticker notizie
-  const tickTex = canvasTex(2048, 64, (c, w, h) => {
+  const tickMsg = 'NEWS  ▪  CHRISTMAS EVE IN NEW YORK  ▪  SNOW TONIGHT  ▪  TIMES SQUARE CELEBRATES  ▪  MARKETS CLOSED FOR THE HOLIDAY  ▪  ';
+  const tctx = document.createElement('canvas').getContext('2d'); tctx.font = '900 44px Arial';
+  const tickTex = canvasTex(Math.ceil(tctx.measureText(tickMsg).width), 64, (c, w, h) => {
     c.fillStyle = '#050505'; c.fillRect(0, 0, w, h); c.fillStyle = '#ffcc00'; c.font = '900 44px Arial'; c.textBaseline = 'middle';
-    c.fillText('NEWS ▪ CHRISTMAS EVE IN NEW YORK ▪ SNOW TONIGHT ▪ TIMES SQUARE CELEBRATES ▪ MARKETS CLOSED FOR THE HOLIDAY ▪ ', 10, h / 2);
-  }, { repeat: [2, 1], mip: false });
+    c.fillText(tickMsg, 0, h / 2);
+  }, { repeat: [3, 1], mip: false });
   const tickM = new THREE.MeshBasicMaterial({ map: tickTex }); adMats.push(tickM);
   const ticker = new THREE.Mesh(new THREE.PlaneGeometry(200, 2), tickM); ticker.position.set(-15.85, 5, 20); ticker.rotation.y = Math.PI / 2; g.add(ticker);
   const ticker2 = new THREE.Mesh(new THREE.PlaneGeometry(26, 2), tickM); ticker2.position.set(0, 5.5, -118.8); g.add(ticker2);
@@ -200,7 +212,7 @@ export function createTimesSquare() {
   const tmp = new THREE.Vector3();
   const setPower = (k) => {
     adMats.forEach((m) => m.color.setScalar(k));
-    bMat.emissiveIntensity = 0.55 * k;
+    bMat.emissiveIntensity = 0.9 * k;
     U.uOn.value = k > 0.5 ? 1 : 0;
     star.visible = starCore.visible = k > 0.5;
     lampHeads.forEach((l) => { l.hm.color.setHex(k > 0.5 ? 0xfff0c8 : 0x222222); l.gl.visible = k > 0.5; });
@@ -225,6 +237,7 @@ export function createTimesSquare() {
       cars.forEach((v) => {
         const sp = v.userData.sp * (out ? 0.55 : 1);
         v.position.z += v.userData.dir * sp * dt;
+        v.userData.wheels.forEach((w) => (w.rotation.x += sp * dt / 0.36));
         if (v.position.z > 200) v.position.z = -112; if (v.position.z < -112) v.position.z = 200;
       });
       walkers.speedMul = out ? 0.45 : 1;
@@ -262,29 +275,35 @@ export function createTimesSquare() {
     onPhase(ph, info) {
       if (ph === 'immersion') { started = true; T = 0; if (info && info.duration) blackoutAt = Math.max(30, info.duration - 28); }
     },
+    bounds(p) { p.x = THREE.MathUtils.clamp(p.x, -15, 15); p.z = THREE.MathUtils.clamp(p.z, -100, 150); },
     startAudio(s) {
       const dest = s.out;
-      const music = A.jingle(s, s.panner(0, 6, -22, { ref: 22, roll: 0.8 }), { level: 0.3 });
-      const bab1 = A.bed(s, dest, { kind: 'pink', type: 'bandpass', f: 520, q: 1.6, level: 0.1, lfo: 0.9, depth: 0.5 });
-      const bab2 = A.bed(s, dest, { kind: 'pink', type: 'bandpass', f: 1300, q: 2, level: 0.06, lfo: 1.3, depth: 0.6 });
-      A.bed(s, dest, { kind: 'brown', type: 'lowpass', f: 300, q: 0.5, level: 0.22, lfo: 0.05, depth: 0.2 });
-      s.every(3500, () => { if (Math.random() < 0.55) A.horn(s, s.panner((Math.random() < 0.5 ? -6 : 6), 1, -60 + Math.random() * 140, { ref: 10 }), s.t, 0.14, 330 + Math.random() * 160); });
-      let sirens = [];
-      const voices = ['What happened?', 'Hey, the lights went out!', 'Is everyone okay?', 'Look, all the screens are black!'];
+      let music = null, street = null, market = null, synthMusic = null;
+      const streetLP = s.filter('lowpass', 18000, 0.5, dest);
+      street = s.stream(SND.timesSquare.url, { gain: 1.0, dest: streetLP, onFail: () => {
+        A.bed(s, dest, { kind: 'pink', type: 'bandpass', f: 520, q: 1.6, level: 0.1, lfo: 0.9, depth: 0.5 });
+        A.bed(s, dest, { kind: 'brown', type: 'lowpass', f: 300, q: 0.5, level: 0.22, lfo: 0.05, depth: 0.2 });
+      } });
+      market = s.stream(SND.mercatino.url, { gain: 0.35, dest });
+      const speakers = s.panner(0, 6, -22, { ref: 18, roll: 0.7 });
+      music = s.stream(SND.jingle.url, { gain: 0.75, dest: speakers, random: false, onFail: () => { synthMusic = A.jingle(s, speakers, { level: 0.3 }); } });
+      s.every(4000, () => { if (Math.random() < 0.45) A.horn(s, s.panner((Math.random() < 0.5 ? -6 : 6), 1, -60 + Math.random() * 140, { ref: 10 }), s.t, 0.12, 330 + Math.random() * 160); });
       snd = {
         blackout() {
-          music.stop(); A.powerDown(s, dest, s.t);
-          A.crowdOoh(s, dest, s.t + 0.4, 0.35);
-          const t = s.t;
-          [bab1, bab2].forEach((b, i) => { b.gain.cancelScheduledValues(t); b.gain.setValueAtTime(b.gain.value, t); b.gain.linearRampToValueAtTime(i ? 0.11 : 0.18, t + 2); });
-          let vi = 0;
-          s.after(2200, () => s.say(voices[vi++], { lang: 'en-US', rate: 1.1, volume: 0.6 }));
-          s.after(5000, () => s.say(voices[vi++], { lang: 'en-US', rate: 1.05, volume: 0.5, pitch: 1.3 }));
-          s.every(16000, () => s.say(voices[vi++ % voices.length], { lang: 'en-US', rate: 1.05, volume: inst._phase === 'live' ? 0.25 : 0.5, pitch: 0.8 + Math.random() * 0.6 }));
-          s.after(4000, () => {
-            sirens = police.map((p) => { const pn = s.panner(p.position.x, 2, p.position.z, { ref: 25, roll: 0.9 }); A.sirenUS(s, pn, { level: 0.3, rate: 0.18 + Math.random() * 0.1 }); return pn; });
+          // la musica rallenta e si ferma come quando manca la corrente
+          if (music && music.ok) {
+            let r = 1; const id = setInterval(() => { r -= 0.08; if (r <= 0.3) { clearInterval(id); try { music.el.pause(); } catch (e) {} s.fade(music, 0, 0.1); } else music.el.playbackRate = r; }, 60);
+          }
+          if (synthMusic) synthMusic.stop();
+          A.powerDown(s, dest, s.t);
+          A.crowdOoh(s, dest, s.t + 0.4, 0.3);
+          s.fade(market, 0, 1.5);
+          s.fade(street, 0.6, 2);
+          streetLP.frequency.setTargetAtTime(2500, s.t, 0.8);
+          s.after(1500, () => s.stream(SND.blackout.url, { gain: 0.8, dest }));
+          s.after(5000, () => {
+            police.forEach((p, i) => { const pn = s.panner(p.position.x, 2, p.position.z, { ref: 30, roll: 0.8 }); s.stream(SND.sirenaNY.url, { gain: 1.0, dest: pn, onFail: () => A.sirenUS(s, pn, { level: 0.3 }) }); });
           });
-          s.after(12000, () => s.say('Please remain calm and follow the safety instructions.', { lang: 'en-US', rate: 0.95, volume: 0.7 }));
         },
         update() {}
       };

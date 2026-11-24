@@ -1,7 +1,8 @@
 // SPORT – La notte della grande finale
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { rng, canvasTex, skyDome, starField, makeGlow, lambert, makePerson, animatePerson, crowdGeometry, crowdMaterial } from './common.js';
+import { rng, canvasTex, skyDome, starField, makeGlow, lambert, makePerson, animatePerson, crowdGeometry, crowdMaterial, fitText, applyTex, LOCAL } from './common.js';
+import { SND } from '../sounds.js';
 import { makeTVCamera } from '../ui.js';
 import * as A from '../audio.js';
 
@@ -21,9 +22,10 @@ export function createStadium() {
 
   // ---- campo ----
   const PW = 115, PH = 76;
-  const pitchTex = canvasTex(1840, 1216, (c, w, h) => {
+  const pitchTex = canvasTex(2300, 1520, (c, w, h) => {
     const s = w / PW;
-    for (let i = 0; i < 20; i++) { c.fillStyle = i % 2 ? '#2e8b35' : '#287d2f'; c.fillRect((i * w) / 20, 0, w / 20 + 1, h); }
+    c.clearRect(0, 0, w, h);
+    for (let i = 0; i < 20; i++) { c.fillStyle = i % 2 ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.10)'; c.fillRect((i * w) / 20, 0, w / 20 + 1, h); }
     c.strokeStyle = '#f4f4f4'; c.lineWidth = 0.14 * s * 1.2;
     const X = (m) => (m + PW / 2) * s, Y = (m) => (m + PH / 2) * s;
     c.strokeRect(X(-52.5), Y(-34), 105 * s, 68 * s);
@@ -38,8 +40,14 @@ export function createStadium() {
     }
     c.beginPath(); c.arc(X(0), Y(0), 0.3 * s, 0, Math.PI * 2); c.fill();
   });
-  const pitch = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshLambertMaterial({ map: pitchTex }));
+  const grassM = new THREE.MeshLambertMaterial({ color: 0x2f7d32 });
+  grassM.userData.mapTint = 0x9fcf8a;
+  applyTex(grassM, LOCAL('grasslight-big.jpg'), { repeat: [24, 16] });
+  applyTex(grassM, LOCAL('grasslight-big-nm.jpg'), { slot: 'normalMap', repeat: [24, 16], color: false });
+  const pitch = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), grassM);
   pitch.rotation.x = -Math.PI / 2; g.add(pitch);
+  const lines = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshLambertMaterial({ map: pitchTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  lines.rotation.x = -Math.PI / 2; lines.renderOrder = 1; g.add(lines);
   const apron = new THREE.Mesh(new THREE.PlaneGeometry(240, 200), lambert(0x1d4a24)); apron.rotation.x = -Math.PI / 2; apron.position.y = -0.08; g.add(apron);
 
   // porte
@@ -104,8 +112,10 @@ export function createStadium() {
   g.add(crowd);
 
   // LED a bordo campo (scorrono)
-  const ledTex = canvasTex(2048, 64, (c, w, h) => {
-    const msgs = ['FINALE INTERNAZIONALE', 'REAL MADRID', 'BARCELLONA', 'NOTTE DI CALCIO', 'FAIR PLAY', 'INVIATO SPECIALE TV'];
+  const msgs = ['FINALE INTERNAZIONALE', 'REAL MADRID', 'BARCELLONA', 'NOTTE DI CALCIO', 'FAIR PLAY', 'INVIATO SPECIALE TV'];
+  const mctx = document.createElement('canvas').getContext('2d'); mctx.font = '900 44px Arial';
+  const ledW = Math.ceil(msgs.reduce((a, m) => a + mctx.measureText(m + '   •   ').width, 0));
+  const ledTex = canvasTex(ledW, 64, (c, w, h) => {
     let x = 0; c.fillStyle = '#05070c'; c.fillRect(0, 0, w, h);
     c.font = '900 44px Arial'; c.textBaseline = 'middle';
     msgs.forEach((m, i) => { c.fillStyle = ['#ffd400', '#ffffff', '#ff3b6b', '#46e0ff', '#7CFC8A', '#ff8a00'][i]; c.fillText(m + '   •   ', x, h / 2); x += c.measureText(m + '   •   ').width; });
@@ -133,22 +143,16 @@ export function createStadium() {
   }
 
   const screenTex = canvasTex(1024, 512, () => {});
-  const drawScreen = (mode, minute = 0) => screenTex.redraw((c, w, h) => {
+  const drawScreen = (mode) => screenTex.redraw((c, w, h) => {
     const gr = c.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#071a3a'); gr.addColorStop(1, '#02060f');
     c.fillStyle = gr; c.fillRect(0, 0, w, h);
     c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#ffd400';
-    c.font = '900 64px Arial'; c.fillText('FINALE INTERNAZIONALE', w / 2, 80);
-    c.fillStyle = '#ffffff'; c.font = '900 78px Arial';
-    if (mode === 'live') {
-      c.fillText('REAL MADRID  1 - 1  BARCELLONA', w / 2, 250);
-      c.fillStyle = '#ff3b3b'; c.font = '900 110px Arial'; c.fillText(`${minute}'`, w / 2, 400);
-    } else if (mode === 'count') {
-      c.fillText('REAL MADRID  vs  BARCELLONA', w / 2, 250);
-      c.fillStyle = '#ff3b3b'; c.font = '900 80px Arial'; c.fillText('ULTIMI MINUTI!', w / 2, 400);
-    } else {
-      c.fillText('REAL MADRID  vs  BARCELLONA', w / 2, 250);
-      c.fillStyle = '#7CFC8A'; c.font = '800 60px Arial'; c.fillText('RISCALDAMENTO IN CORSO', w / 2, 400);
-    }
+    const M = w * 0.9;
+    fitText(c, 'FINALE INTERNAZIONALE', w / 2, 80, M, 64);
+    c.fillStyle = '#ffffff';
+    fitText(c, 'REAL MADRID  vs  BARCELLONA', w / 2, 250, M, 78);
+    if (mode === 'count') { c.fillStyle = '#ff3b3b'; fitText(c, 'SI COMINCIA TRA POCHI MINUTI', w / 2, 400, M, 70); }
+    else { c.fillStyle = '#7CFC8A'; fitText(c, 'RISCALDAMENTO IN CORSO', w / 2, 400, M, 60, { weight: '800' }); }
   });
   drawScreen('warm');
   const scrM = new THREE.MeshBasicMaterial({ map: screenTex });
@@ -260,7 +264,7 @@ export function createStadium() {
       tvCams.forEach((c, i) => { c.userData.yawG.rotation.y = Math.sin(t * 0.4 + i) * 0.5; });
       // allenatori
       coaches.forEach((c, i) => {
-        const k = mode === 'warm' ? 0.2 : 1;
+        const k = inst._phase === 'live' || inst._phase === 'countdown' ? 1 : 0.35;
         c.userData.armR.rotation.x = -1.2 - Math.sin(t * 3 + i) * 0.6 * k;
         c.userData.armR.rotation.z = Math.sin(t * 2 + i) * 0.3 * k;
         c.position.x = (i ? 6 : -6) + Math.sin(t * 0.5 + i * 2) * 1.5 * k;
@@ -295,63 +299,29 @@ export function createStadium() {
           }
           pi++;
         });
-      } else {
-        // partita negli ultimi minuti
-        ballTimer -= dt;
-        if (ballTimer <= 0) { ballTimer = 1.2 + Math.random() * 2; ballTarget.set((Math.random() - 0.5) * 90, 0.11, (Math.random() - 0.5) * 58); }
-        ballPos.lerp(ballTarget, Math.min(1, dt * 1.6)); matchBall.position.copy(ballPos);
-        players.forEach((p, i) => {
-          const u = p.userData;
-          u.target.copy(u.home).lerp(ballPos, i % 4 === 0 ? 0.85 : 0.35);
-          const d = u.target.clone().sub(p.position); d.y = 0;
-          const L = d.length(); const sp = Math.min(L, 6.5 * dt);
-          if (L > 0.3) { d.normalize(); p.position.addScaledVector(d, sp); p.rotation.y = Math.atan2(d.x, d.z); animatePerson(p, t * 11 + i, 0.75); }
-          else animatePerson(p, 0, 0);
-          p.position.y = 0;
-        });
-        sTimer += dt;
-        if (sTimer > 20 && screenMinute < 93) { sTimer = 0; screenMinute++; drawScreen('live', screenMinute); }
       }
       if (snd) snd.update(t);
     },
     onPhase(ph) {
       if (ph === 'countdown') { drawScreen('count'); U.uExcite.value = 1.0; }
-      if (ph === 'live') {
-        mode = 'match'; drawScreen('live', screenMinute); U.uExcite.value = 1.2;
-        balls.forEach((b) => (b.visible = false)); matchBall.visible = true;
-        ballPos.set(0, 0.11, 0);
-        players.forEach((p) => { const u = p.userData; u.home.set(u.side * (8 + Math.random() * 38), 0, (Math.random() - 0.5) * 55); });
-        if (snd) snd.roar();
-      }
+      if (ph === 'live') { U.uExcite.value = 1.1; }
     },
+    bounds(p) { p.x = THREE.MathUtils.clamp(p.x, -54, 54); p.z = THREE.MathUtils.clamp(p.z, -36, 40.5); },
     startAudio(s) {
       const dest = s.out;
-      const roar = A.bed(s, dest, { kind: 'pink', f: 700, q: 0.5, level: 0.22, lfo: 0.07, depth: 0.5 });
-      A.bed(s, dest, { kind: 'brown', type: 'lowpass', f: 350, q: 0.5, level: 0.25, lfo: 0.05, depth: 0.3 });
-      const chantPan = s.panner(-75, 10, 0, { ref: 30, roll: 0.6 });
-      A.chant(s, chantPan, { level: 0.1, base: 50 });
-      const chant2 = s.panner(75, 10, 0, { ref: 30, roll: 0.6 });
-      s.after(9000, () => A.chant(s, chant2, { level: 0.08, base: 53, bpm: 104 }));
-      A.drums(s, s.panner(-70, 6, 15, { ref: 25, roll: 0.5 }), { bpm: 118, level: 0.6 });
-      A.drums(s, s.panner(70, 6, -10, { ref: 25, roll: 0.5 }), { bpm: 128, level: 0.45 });
-      const ap = A.applause(s, dest);
-      s.every(7000, () => { if (Math.random() < 0.6) ap.burst(2 + Math.random() * 3, 0.18); });
-      s.every(2600, () => { if (Math.random() < 0.55) A.whistle(s, s.panner((Math.random() - 0.5) * 120, 8, (Math.random() - 0.5) * 90, { ref: 15 }), s.t + Math.random(), 0.1); });
-      const speaker = [
-        'Signore e signori, benvenuti alla grande finale internazionale!',
-        'Real Madrid contro Barcellona! Accogliamo le squadre con un grande applauso!',
-        'Si invitano gli spettatori a raggiungere i propri posti. Il fischio d\'inizio è vicino.'
-      ];
-      let si = 0;
-      s.after(5000, () => { s.say(speaker[si++ % 3], { rate: 0.95, volume: 0.9 }); });
-      s.every(26000, () => { if (inst._phase !== 'live') s.say(speaker[si++ % 3], { rate: 0.95, volume: 0.85 }); });
-      const tele = ['Palla al centro… attenzione… che occasione!', 'Lancio lungo, controlla, tira! Fuori di poco!', 'Pressing altissimo, la squadra non molla!'];
-      let ti = 0;
-      s.every(17000, () => { if (inst._phase !== 'live') s.say(tele[ti++ % 3], { rate: 1.25, volume: 0.35, pitch: 0.9 }); });
-      snd = {
-        update() {},
-        roar() { const t = s.t; roar.gain.cancelScheduledValues(t); roar.gain.setValueAtTime(0.22, t); roar.gain.linearRampToValueAtTime(0.4, t + 1); roar.gain.linearRampToValueAtTime(0.25, t + 5); ap.burst(4, 0.25); }
+      const fallback = () => {
+        if (inst._fb) return; inst._fb = true;
+        A.bed(s, dest, { kind: 'pink', f: 700, q: 0.5, level: 0.22, lfo: 0.07, depth: 0.5 });
+        A.chant(s, s.panner(-75, 10, 0, { ref: 30, roll: 0.6 }), { level: 0.1, base: 50 });
+        A.drums(s, s.panner(-70, 6, 15, { ref: 25, roll: 0.5 }), { bpm: 118, level: 0.6 });
       };
+      // tribune: più registrazioni sovrapposte, da direzioni diverse, per una folla piena e avvolgente
+      s.stream(SND.stadioCurva.url, { gain: 0.95, dest: s.panner(-70, 10, 0, { ref: 60, roll: 0.3 }), onFail: fallback });
+      s.stream(SND.stadioPartita.url, { gain: 0.8, dest: s.panner(0, 12, -60, { ref: 60, roll: 0.3 }) });
+      s.stream(SND.stadioTifosi.url, { gain: 0.6, dest: s.panner(70, 10, 0, { ref: 60, roll: 0.3 }) });
+      s.stream(SND.stadioGol.url, { gain: 0.45, dest: s.panner(0, 10, 55, { ref: 40, roll: 0.3 }) });
+      s.after(4000, () => s.say('Signore e signori, benvenuti alla finale internazionale. Real Madrid contro Barcellona!', { rate: 0.95, volume: 0.8 }));
+      snd = { update() {} };
     }
   };
   return inst;

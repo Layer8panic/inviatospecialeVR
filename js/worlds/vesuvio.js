@@ -1,6 +1,7 @@
 // CRONACA – Il Vesuvio si risveglia: Napoli in allerta (emergenza simulata)
 import * as THREE from 'three';
-import { rng, canvasTex, skyDome, makeGlow, lambert, makePerson, animatePerson, Walkers, makeVehicle, fallingParticles } from './common.js';
+import { rng, canvasTex, skyDome, makeGlow, lambert, makePerson, animatePerson, Walkers, makeVehicle, fallingParticles, fitText, photoMat, applyTex, PH, LOCAL, buildingsGeometry } from './common.js';
+import { SND } from '../sounds.js';
 import * as A from '../audio.js';
 import { SoundScope } from '../audio.js';
 
@@ -25,9 +26,12 @@ export function createVesuvio() {
   const sky = skyDome(0x2a2321, 0x7a6050, { exponent: 0.5 }); g.add(sky);
 
   // mare e costa
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(9000, 4200), new THREE.MeshLambertMaterial({ color: 0x2e3d44 }));
+  let seaNormal = null;
+  const seaM = new THREE.MeshPhongMaterial({ color: 0x243841, specular: 0xffa070, shininess: 70 });
+  applyTex(seaM, LOCAL('waternormals.jpg'), { slot: 'normalMap', repeat: [400, 190], color: false, onLoad: (t) => { seaNormal = t; } });
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(9000, 4200), seaM);
   sea.rotation.x = -Math.PI / 2; sea.position.set(0, -1.2, -2106); g.add(sea);
-  const land = new THREE.Mesh(new THREE.CircleGeometry(1750, 64), lambert(0x3a362b)); land.rotation.x = -Math.PI / 2; land.position.set(VX, 0.5, VZ); g.add(land);
+  const land = new THREE.Mesh(new THREE.CircleGeometry(1750, 64), photoMat(PH('aerial_grass_rock'), { fallback: 0x3a362b, tint: 0x8a8070, repeat: [60, 60] })); land.rotation.x = -Math.PI / 2; land.position.set(VX, 0.5, VZ); g.add(land);
 
   // Vesuvio (con il Monte Somma)
   const pts = PROFILE.map(([r, h]) => new THREE.Vector2(r, h));
@@ -39,8 +43,8 @@ export function createVesuvio() {
     if (y > 2) vp.setY(i, y + n * Math.min(1, y / 120));
   }
   vgeo.computeVertexNormals();
-  const volcano = new THREE.Mesh(vgeo, lambert(0x4b4038)); volcano.position.set(VX, 0, VZ); g.add(volcano);
-  const somma = new THREE.Mesh(new THREE.LatheGeometry([[1300, 0], [900, 200], [700, 430], [620, 520], [560, 470]].map(([r, h]) => new THREE.Vector2(r, h)), 48, Math.PI * 0.15, Math.PI * 0.9), lambert(0x3f3730));
+  const volcano = new THREE.Mesh(vgeo, photoMat(PH('aerial_rocks_02'), { fallback: 0x4b4038, tint: 0x9a8a80, repeat: [14, 3] })); volcano.position.set(VX, 0, VZ); g.add(volcano);
+  const somma = new THREE.Mesh(new THREE.LatheGeometry([[1300, 0], [900, 200], [700, 430], [620, 520], [560, 470]].map(([r, h]) => new THREE.Vector2(r, h)), 48, Math.PI * 0.15, Math.PI * 0.9), photoMat(PH('aerial_rocks_02'), { fallback: 0x3f3730, tint: 0x8a7a70, repeat: [10, 2] }));
   somma.position.set(VX - 150, 0, VZ - 250); g.add(somma);
 
   // paesi ai piedi del vulcano
@@ -123,9 +127,12 @@ export function createVesuvio() {
   let boltT = 0;
 
   // lungomare, strada, città alle spalle
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 80), lambert(0x7d746b)); ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, 34); g.add(ground);
-  const roadTex = canvasTex(512, 64, (c, w, h) => { c.fillStyle = '#2b2b2e'; c.fillRect(0, 0, w, h); c.fillStyle = '#e8e8e8'; for (let x = 0; x < w; x += 64) c.fillRect(x, h / 2 - 2, 32, 4); }, { repeat: [60, 1] });
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(900, 8), new THREE.MeshLambertMaterial({ map: roadTex })); road.rotation.x = -Math.PI / 2; road.position.set(0, 0.02, 10); g.add(road);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(900, 80), photoMat(PH('cobblestone_floor_08'), { fallback: 0x7d746b, tint: 0xc8beb4, repeat: [300, 27], normal: PH('cobblestone_floor_08', 'nor_gl') })); ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, 34); g.add(ground);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(900, 8), photoMat(PH('asphalt_02'), { fallback: 0x2b2b2e, tint: 0x9a9a9a, repeat: [225, 2], polygonOffset: true, polygonOffsetFactor: -1 }));
+  road.rotation.x = -Math.PI / 2; road.position.set(0, 0.02, 10); g.add(road);
+  const dashTex = canvasTex(256, 16, (c, w, h) => { c.clearRect(0, 0, w, h); c.fillStyle = '#eeeeee'; c.fillRect(0, 4, 128, 8); }, { repeat: [150, 1] });
+  const dash = new THREE.Mesh(new THREE.PlaneGeometry(900, 0.2), new THREE.MeshLambertMaterial({ map: dashTex, transparent: true, polygonOffset: true, polygonOffsetFactor: -2 }));
+  dash.rotation.x = -Math.PI / 2; dash.position.set(0, 0.03, 10); g.add(dash);
   const wallM = lambert(0x9a8f84);
   const sea_wall = new THREE.Mesh(new THREE.BoxGeometry(900, 1.4, 1.2), wallM); sea_wall.position.set(0, -0.5, -6.2); g.add(sea_wall);
   const railM = lambert(0x2f3a3f);
@@ -140,25 +147,38 @@ export function createVesuvio() {
     const l = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe2a8 })); l.position.set(x, 5.6, -4.5); g.add(l);
     const gl = makeGlow(0xffcf80, 3, 0.6); gl.position.copy(l.position); g.add(gl);
   }
-  const winTex = canvasTex(256, 256, (c, w, h) => {
-    c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h);
-    for (let y = 18; y < h - 20; y += 52) for (let x = 18; x < w - 20; x += 46) {
-      c.fillStyle = '#3a3330'; c.fillRect(x, y, 22, 32); c.fillStyle = '#5b6e4e'; c.fillRect(x - 5, y, 4, 32); c.fillRect(x + 23, y, 4, 32);
+  // facciata napoletana: intonaco, finestre con persiane verdi, balconi in ferro (una ripetizione = 6 m x 3.5 m)
+  const facade = canvasTex(512, 300, (c, w, h) => {
+    c.fillStyle = '#e9e1d2'; c.fillRect(0, 0, w, h);
+    const r = rng(77);
+    for (let k = 0; k < 1800; k++) { c.fillStyle = `rgba(${90 + r() * 60},${80 + r() * 50},${60 + r() * 40},${r() * 0.08})`; c.fillRect(r() * w, r() * h, 2 + r() * 6, 2 + r() * 6); }
+    c.fillStyle = 'rgba(0,0,0,0.12)'; c.fillRect(0, h - 14, w, 6);
+    for (const x0 of [w * 0.18, w * 0.62]) {
+      const ww = w * 0.2, wh = h * 0.55, y0 = h * 0.18;
+      c.fillStyle = '#d8ccb6'; c.fillRect(x0 - 8, y0 - 10, ww + 16, wh + 18);
+      c.fillStyle = '#2a2622'; c.fillRect(x0, y0, ww, wh);
+      c.fillStyle = '#3f5f3a'; c.fillRect(x0 - ww * 0.42, y0, ww * 0.4, wh); c.fillRect(x0 + ww * 1.02, y0, ww * 0.4, wh);
+      c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 2;
+      for (let yy = y0 + 6; yy < y0 + wh; yy += 8) { c.beginPath(); c.moveTo(x0 - ww * 0.42, yy); c.lineTo(x0 - ww * 0.02, yy); c.moveTo(x0 + ww * 1.02, yy); c.lineTo(x0 + ww * 1.42, yy); c.stroke(); }
+      c.fillStyle = '#1b1b1b'; c.fillRect(x0 - 14, y0 + wh, ww + 28, 6);
+      for (let xx = x0 - 12; xx < x0 + ww + 14; xx += 8) c.fillRect(xx, y0 + wh - 26, 2, 26);
+      c.fillRect(x0 - 14, y0 + wh - 28, ww + 28, 3);
     }
   });
-  const bN = 170;
-  const blds = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ map: winTex }), bN);
-  const pal = [0xd9b26f, 0xc97b4a, 0xe3c9a0, 0xb5553c, 0xe8d9b0, 0xd4a373, 0xcf9e8a];
-  let bi = 0;
+  facade.wrapS = facade.wrapT = THREE.RepeatWrapping;
+  const pal = [0xe0b46a, 0xd08a5a, 0xf0dcb8, 0xc86a50, 0xf2e6c4, 0xdcae7c, 0xd9a090, 0xe8c890];
+  const blist = [];
   for (const rowZ of [27, 52, 78]) {
-    for (let x = -330; x < 330 && bi < bN; ) {
-      const w = 14 + R() * 16, d = 18 + R() * 6, h = 14 + R() * 20 + (rowZ > 30 ? 8 : 0);
-      m4.compose(new THREE.Vector3(x + w / 2, h / 2, rowZ + (R() - 0.5) * 3), q.identity(), new THREE.Vector3(w, h, d));
-      blds.setMatrixAt(bi, m4); col.set(pal[Math.floor(R() * pal.length)]); blds.setColorAt(bi, col); bi++;
+    for (let x = -330; x < 330; ) {
+      const w = 14 + R() * 16, d = 18 + R() * 6, h = Math.round((4 + Math.floor(R() * 4) + (rowZ > 30 ? 2 : 0))) * 3.5;
+      blist.push({ x: x + w / 2, y: h / 2, z: rowZ + (R() - 0.5) * 3, w, h, d, color: pal[Math.floor(R() * pal.length)], u0: R() });
       x += w + 0.5;
     }
   }
-  blds.count = bi; g.add(blds);
+  const blds = new THREE.Mesh(buildingsGeometry(blist, [6, 3.5]), new THREE.MeshLambertMaterial({ map: facade, vertexColors: true }));
+  g.add(blds);
+  const roofs = new THREE.Mesh(buildingsGeometry(blist.map((b) => ({ ...b, y: b.h + 0.5, h: 1, w: b.w + 0.6, d: b.d + 0.6, color: 0x8a5a44 }))), lambert(0x8a5a44));
+  g.add(roofs);
 
   // pannello della Protezione Civile
   const signTex = canvasTex(1024, 256, () => {});
@@ -166,8 +186,8 @@ export function createVesuvio() {
   let msgI = 0;
   const drawSign = () => signTex.redraw((c, w, h) => {
     c.fillStyle = '#080808'; c.fillRect(0, 0, w, h);
-    c.fillStyle = '#ffb000'; c.font = '900 44px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText('PROTEZIONE CIVILE', w / 2, 60); c.font = '900 64px Arial'; c.fillText(msgs[msgI % msgs.length], w / 2, 170);
+    c.fillStyle = '#ffb000'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    fitText(c, 'PROTEZIONE CIVILE', w / 2, 60, w * 0.9, 44); fitText(c, msgs[msgI % msgs.length], w / 2, 170, w * 0.92, 64);
   });
   drawSign();
   const signG = new THREE.Group(); signG.position.set(-9, 0, -3.2); signG.rotation.y = 0.35;
@@ -175,13 +195,14 @@ export function createVesuvio() {
   const sback = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.3, 0.15), lambert(0x222222)); sback.position.set(0, 2.8, -0.09); signG.add(sback);
   for (const x of [-2, 2]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.2, 6), lambert(0x555555)); p.position.set(x, 1.1, -0.09); signG.add(p); }
   g.add(signG);
+  const signG2 = signG.clone(); signG2.position.set(26, 0, -3.2); signG2.rotation.y = -0.3; g.add(signG2);
 
   // mezzi di soccorso in movimento
   const vehicles = [];
   const vdefs = [
     { body: 0xffffff, stripe: 0xff6a00, bar: 'blue', lane: 8, dir: 1, x: -200, sp: 13, siren: true },
     { body: 0x1f3f8f, stripe: 0xffd200, bar: 'amber', lane: 12, dir: -1, x: 80, sp: 11 },
-    { body: 0x0c1a3a, stripe: 0xc81e1e, bar: 'blue', lane: 8, dir: 1, x: 40, sp: 14 },
+    { body: 0x2f5fb3, stripe: 0xffffff, bar: 'blue', lane: 8, dir: 1, x: 40, sp: 14 },
     { body: 0xb91c1c, stripe: 0xffffff, bar: 'blue', lane: 12, dir: -1, x: -120, sp: 10, len: 8, hei: 3, siren: true },
     { body: 0xffffff, stripe: 0xff6a00, bar: 'blue', lane: 12, dir: -1, x: 230, sp: 12 },
     { body: 0x2d3640, stripe: null, bar: null, lane: 8, dir: 1, x: 150, sp: 9 }
@@ -220,6 +241,9 @@ export function createVesuvio() {
     const rotor = new THREE.Group(); rotor.position.y = 1.4; h.add(rotor);
     for (let k = 0; k < 2; k++) { const bl = new THREE.Mesh(new THREE.BoxGeometry(11, 0.05, 0.3), lambert(0x222222)); bl.rotation.y = (k * Math.PI) / 2; rotor.add(bl); }
     const tr = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.6, 0.2), lambert(0x222222)); tr.position.set(0.25, 0.5, -6.2); h.add(tr);
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.1, 0.8), lambert(color)); fin.position.set(0, 0.8, -6); h.add(fin);
+    for (const x of [-0.8, 0.8]) { const sk = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 3), lambert(0x222222)); sk.position.set(x, -1.3, 0); h.add(sk); }
+    const glass = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshPhongMaterial({ color: 0x223344, shininess: 90, specular: 0xffffff })); glass.rotation.x = Math.PI / 2; glass.position.set(0, 0.15, 1.7); h.add(glass);
     const beacon = makeGlow(0xff2020, 4, 1); beacon.position.y = -1; h.add(beacon);
     h.userData = { rotor, tr, beacon };
     return h;
@@ -243,6 +267,7 @@ export function createVesuvio() {
     studio: { distance: 2.3, scale: 1 },
     update(dt, t, ph, cam) {
       U.uTime.value = t;
+      if (seaNormal) { seaNormal.offset.x = t * 0.004; seaNormal.offset.y = t * 0.0025; }
       ash.userData.mat.uniforms.uTime.value = t;
       if (cam) { cam.getWorldPosition(tmpV); ash.userData.mat.uniforms.uCenter.value.set(tmpV.x, 0, tmpV.z); }
       U.uFlash.value = Math.max(0, U.uFlash.value - dt * 0.8);
@@ -262,6 +287,7 @@ export function createVesuvio() {
       vehicles.forEach((v) => {
         const d = v.userData.d;
         v.position.x += d.dir * d.sp * dt;
+        v.userData.wheels && v.userData.wheels.forEach((w) => (w.rotation.x += d.sp * dt / 0.36));
         if (v.position.x > 280) v.position.x = -280; if (v.position.x < -280) v.position.x = 280;
         v.userData.flash(t + d.x);
       });
@@ -272,43 +298,56 @@ export function createVesuvio() {
       helis.forEach((h) => {
         const o = h.userData.o; o.a += o.w * dt;
         h.position.set(o.cx + Math.cos(o.a) * o.rr, o.hh + Math.sin(t * 0.3) * 4, o.cz + Math.sin(o.a) * o.rr);
-        h.rotation.y = -o.a + (o.w > 0 ? Math.PI : 0); h.rotation.z = 0.12 * Math.sign(o.w);
+        // direzione di volo = tangente alla circonferenza
+        const vx = -Math.sin(o.a) * Math.sign(o.w), vz = Math.cos(o.a) * Math.sign(o.w);
+        h.rotation.order = 'YXZ';
+        h.rotation.y = Math.atan2(vx, vz);
+        h.rotation.x = 0.12;                       // muso leggermente giù, come in volo avanzato
+        h.rotation.z = -0.22 * Math.sign(o.w);     // inclinato verso il centro della virata
         h.userData.rotor.rotation.y += dt * 30; h.userData.tr.rotation.x += dt * 40;
         h.userData.beacon.material.opacity = Math.sin(t * 6) > 0.7 ? 1 : 0;
       });
       if (snd) snd.update();
     },
     onPhase() {},
+    bounds(p) { p.x = THREE.MathUtils.clamp(p.x, -70, 70); p.z = THREE.MathUtils.clamp(p.z, -4.8, 15); },
     startAudio(s) {
       const dest = s.out;
-      A.bed(s, dest, { kind: 'brown', type: 'lowpass', f: 260, q: 0.5, level: 0.35, lfo: 0.04, depth: 0.3 });
-      A.bed(s, dest, { kind: 'pink', f: 700, q: 0.6, level: 0.08, lfo: 0.11, depth: 0.5 });
-      const rumble = A.bed(s, s.panner(VX, 400, VZ, { ref: 2500, roll: 1 }), { kind: 'brown', type: 'lowpass', f: 90, q: 0.7, level: 0.55, lfo: 0.13, depth: 0.5 });
-      const volPan = s.panner(VX, 400, VZ, { ref: 2500, roll: 1 });
-      const sirenPans = [];
-      vehicles.forEach((v) => { if (v.userData.d.siren) { const p = s.panner(v.position.x, 1.5, v.position.z, { ref: 8, roll: 1.1 }); A.sirenIT(s, p, { level: 0.35, hi: v.userData.d.len ? 860 : 930, lo: v.userData.d.len ? 650 : 700 }); sirenPans.push([p, v]); } });
-      const farSiren = s.panner(-400, 5, 120, { ref: 40 }); A.sirenIT(s, farSiren, { level: 0.25, hi: 900, lo: 680 });
-      const heliPans = helis.map((h) => { const p = s.panner(0, 80, -200, { ref: 40, roll: 1 }); A.heli(s, p, 0.6); return [p, h]; });
-      s.every(5000, () => { if (Math.random() < 0.5) A.horn(s, s.panner((Math.random() - 0.5) * 200, 1, 10 + Math.random() * 20, { ref: 10 }), s.t, 0.12, 380 + Math.random() * 120); });
+      const dir = new THREE.Vector3(VX, 0, VZ).normalize();
+      const volPan = s.panner(dir.x * 300, 150, dir.z * 300, { ref: 300, roll: 0.2 });
+      const fallback = () => {
+        if (inst._fb) return; inst._fb = true;
+        A.bed(s, dest, { kind: 'brown', type: 'lowpass', f: 260, q: 0.5, level: 0.35, lfo: 0.04, depth: 0.3 });
+        A.bed(s, volPan, { kind: 'brown', type: 'lowpass', f: 90, q: 0.7, level: 0.55, lfo: 0.13, depth: 0.5 });
+        vehicles.forEach((v) => { if (v.userData.d.siren) { const p = s.panner(v.position.x, 1.5, v.position.z, { ref: 8, roll: 1.1 }); A.sirenIT(s, p, { level: 0.3 }); v.userData.sirenPan = p; } });
+      };
+      // vulcano: cratere dell'Etna e un'eruzione vera, dalla direzione del Vesuvio
+      const lowVol = s.filter('lowpass', 1400, 0.5, volPan);
+      s.stream(SND.etna.url, { gain: 1.0, dest: lowVol, onFail: fallback });
+      s.stream(SND.eruzione.url, { gain: 0.8, dest: lowVol });
+      // città alle spalle: traffico e ambulanze vere (Catania), Napoli al mattino
+      s.stream(SND.cittaSirene.url, { gain: 0.85, dest: s.panner(0, 6, 40, { ref: 30, roll: 0.4 }) });
+      // il mare sotto il lungomare
+      s.stream(SND.mareNapoli.url, { gain: 0.7, dest: s.panner(0, -1, -9, { ref: 6, roll: 0.8 }) });
+      // elicotteri che seguono la loro posizione
+      const heliPans = helis.map((h, i) => { const p = s.panner(0, 80, -200, { ref: 40, roll: 0.9 }); s.stream(i ? SND.elicotteroPolizia.url : SND.elicottero.url, { gain: 1.0, dest: p }); return [p, h]; });
+      // una sirena bitonale vera in movimento sull'ambulanza
+      const amb1 = vehicles.find((v) => v.userData.d.siren);
+      const sirPan = s.panner(0, 1.5, 8, { ref: 10, roll: 1 });
+      A.sirenIT(s, s.filter('bandpass', 1100, 0.7, sirPan), { level: 0.22 });
       const pc = [
-        'Attenzione, attenzione. Avviso della Protezione Civile. Mantenete la calma.',
-        'Allontanatevi dalla zona rossa seguendo i percorsi indicati. Non avvicinatevi al vulcano.',
-        'Seguite soltanto le comunicazioni ufficiali e le indicazioni delle forze dell\'ordine.'
+        'Attenzione. Avviso della Protezione Civile. Mantenete la calma e allontanatevi dalla zona rossa seguendo i percorsi indicati.',
+        'Non avvicinatevi al vulcano. Seguite soltanto le comunicazioni ufficiali e le indicazioni delle forze dell\'ordine.'
       ];
-      const radio = [
-        'Centrale a tutte le unità: evacuazione in corso nel settore est. Passo.',
-        'Unità dodici, ricevuto. Ci dirigiamo verso il punto di raccolta. Passo.',
-        'Squadra soccorso, confermate posizione. Strada libera sul lungomare. Passo.'
-      ];
-      let pi = 0, ri = 0;
-      s.after(6000, () => s.say(pc[pi++ % 3], { rate: 0.92, volume: 0.9 }));
-      s.every(24000, () => s.say(pc[pi++ % 3], { rate: 0.92, volume: inst._phase === 'live' ? 0.4 : 0.9 }));
-      s.every(15000, () => { A.squelch(s, dest, s.t, 0.16); s.after(350, () => s.say(radio[ri++ % 3], { rate: 1.1, volume: inst._phase === 'live' ? 0.3 : 0.65, pitch: 0.85 })); s.after(4500, () => A.squelch(s, dest, s.t, 0.12)); });
+      let pi = 0;
+      s.after(7000, () => s.say(pc[pi++ % 2], { rate: 0.92, volume: 0.9 }));
+      s.every(30000, () => s.say(pc[pi++ % 2], { rate: 0.92, volume: inst._phase === 'live' ? 0.35 : 0.9 }));
       s.every(6000, () => { msgI++; drawSign(); });
       snd = {
-        boom() { A.boom(s, volPan, s.t + 0.5, 1.2); const t = s.t; rumble.gain.setValueAtTime(0.55, t); rumble.gain.linearRampToValueAtTime(0.9, t + 1); rumble.gain.linearRampToValueAtTime(0.55, t + 6); },
+        boom() { A.boom(s, volPan, s.t + 0.4, 1.3); },
         update() {
-          sirenPans.forEach(([p, v]) => SoundScope.setPos(p, v.position.x, 1.5, v.position.z));
+          if (amb1) SoundScope.setPos(sirPan, amb1.position.x, 1.5, amb1.position.z);
+          vehicles.forEach((v) => { if (v.userData.sirenPan) SoundScope.setPos(v.userData.sirenPan, v.position.x, 1.5, v.position.z); });
           heliPans.forEach(([p, h]) => SoundScope.setPos(p, h.position.x, h.position.y, h.position.z));
         }
       };

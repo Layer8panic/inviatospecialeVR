@@ -219,9 +219,13 @@ export function makeVehicle({ body = 0xffffff, stripe = 0xff6600, len = 5.2, wid
     const s = new THREE.Mesh(new THREE.BoxGeometry(wid * 1.01, 0.22, len * 1.005), lambert(stripe)); s.position.y = 0.35 + hei * 0.3; g.add(s);
   }
   const wg = new THREE.CylinderGeometry(0.36, 0.36, 0.28, 12); wg.rotateZ(Math.PI / 2);
+  const wheels = [];
+  const hubM = lambert(0x9a9a9a);
   for (const [x, z] of [[-wid / 2, len * 0.32], [wid / 2, len * 0.32], [-wid / 2, -len * 0.32], [wid / 2, -len * 0.32]]) {
-    const w = new THREE.Mesh(wg, lambert(0x111111)); w.position.set(x, 0.36, z); g.add(w);
+    const w = new THREE.Mesh(wg, lambert(0x111111)); w.position.set(x, 0.36, z); g.add(w); wheels.push(w);
+    const hub = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 0.08), hubM); hub.position.x = Math.sign(x) * 0.02; w.add(hub);
   }
+  g.userData.wheels = wheels;
   const headM = new THREE.MeshBasicMaterial({ color: 0xfff6d8 }), tailM = new THREE.MeshBasicMaterial({ color: 0xff2020 });
   for (const x of [-wid * 0.33, wid * 0.33]) {
     const h = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.05), headM); h.position.set(x, 0.75, len / 2 + 0.01); g.add(h);
@@ -243,7 +247,7 @@ export function makeVehicle({ body = 0xffffff, stripe = 0xff6600, len = 5.2, wid
     const sign = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.25), new THREE.MeshBasicMaterial({ color: 0xfff1a8 }));
     sign.position.set(0, 0.35 + hei * 0.62 + hei * 0.36 + 0.09, -len * 0.05); g.add(sign);
   }
-  g.userData.lights = lights;
+  g.userData.lights = lights; g.userData.wheels = wheels;
   g.userData.flash = (t) => {
     lights.forEach((L) => {
       const on = Math.sin(t * 14 + L.i * Math.PI) > 0;
@@ -292,3 +296,74 @@ export function fallingParticles({ count = 2000, box = [60, 30, 60], color = 0xf
 
 export function lerp(a, b, k) { return a + (b - a) * k; }
 export function smooth(a, b, x) { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+
+// ---------- testo che non esce dagli schermi ----------
+export function fitText(ctx, text, x, y, maxW, size, { weight = '900', family = 'Arial, Helvetica, sans-serif', min = 10, align } = {}) {
+  let fs = size;
+  ctx.font = `${weight} ${fs}px ${family}`;
+  while (ctx.measureText(text).width > maxW && fs > min) { fs -= 2; ctx.font = `${weight} ${fs}px ${family}`; }
+  if (align) ctx.textAlign = align;
+  ctx.fillText(text, x, y);
+  return fs;
+}
+
+// ---------- texture fotografiche ----------
+const loader = new THREE.TextureLoader();
+loader.setCrossOrigin('anonymous');
+export const BASE = new URL('../../', import.meta.url).href;
+export const LOCAL = (f) => BASE + 'assets/tex/' + f;
+// Poly Haven (CC0): https://polyhaven.com
+export const PH = (id, map = 'diff', res = '1k') => `https://dl.polyhaven.org/file/ph-assets/Textures/jpg/${res}/${id}/${id}_${map}_${res}.jpg`;
+
+export function applyTex(mat, url, { slot = 'map', repeat = [1, 1], color = true, aniso = 8, onLoad } = {}) {
+  loader.load(url, (t) => {
+    if (color) t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(repeat[0], repeat[1]);
+    t.anisotropy = aniso;
+    mat[slot] = t;
+    if (slot === 'map' && mat.userData.mapTint !== undefined) mat.color.setHex(mat.userData.mapTint);
+    mat.needsUpdate = true;
+    if (onLoad) onLoad(t);
+  }, undefined, () => {});
+  return mat;
+}
+
+// Materiale che mostra un colore finché la foto non è arrivata, poi la foto (tinta con mapTint)
+export function photoMat(url, { fallback = 0x808080, tint = 0xffffff, repeat = [1, 1], normal, normalScale = 1, kind = 'lambert', ...rest } = {}) {
+  const M = kind === 'phong' ? THREE.MeshPhongMaterial : kind === 'standard' ? THREE.MeshStandardMaterial : THREE.MeshLambertMaterial;
+  const m = new M({ color: fallback, ...rest });
+  m.userData.mapTint = tint;
+  applyTex(m, url, { repeat });
+  if (normal) applyTex(m, normal, { slot: 'normalMap', repeat, color: false, onLoad: () => m.normalScale && m.normalScale.set(normalScale, normalScale) });
+  return m;
+}
+
+// ---------- edifici con UV in metri (finestre sempre in scala) ----------
+// list: [{ x, y, z, w, h, d, color }], tile: dimensioni in metri di una ripetizione della texture
+export function buildingsGeometry(list, tile = [6, 3.5]) {
+  const geos = [];
+  const c = new THREE.Color();
+  for (const b of list) {
+    const g = new THREE.BoxGeometry(b.w, b.h, b.d);
+    const uv = g.attributes.uv;
+    // ordine facce BoxGeometry: +x, -x, +y, -y, +z, -z (4 vertici ciascuna)
+    const dims = [[b.d, b.h], [b.d, b.h], [b.w, b.d], [b.w, b.d], [b.w, b.h], [b.w, b.h]];
+    for (let f = 0; f < 6; f++) {
+      const [fw, fh] = dims[f];
+      for (let k = 0; k < 4; k++) {
+        const i = f * 4 + k;
+        uv.setXY(i, uv.getX(i) * fw / tile[0] + (b.u0 || 0), uv.getY(i) * fh / tile[1]);
+      }
+    }
+    // tetti senza finestre: uv a zero (pixel in basso a sinistra della texture)
+    for (const f of [2, 3]) for (let k = 0; k < 4; k++) uv.setXY(f * 4 + k, 0.001, 0.001);
+    g.translate(b.x, b.y, b.z);
+    c.set(b.color);
+    const col = new Float32Array(g.attributes.position.count * 3);
+    for (let i = 0; i < col.length; i += 3) { col[i] = c.r; col[i + 1] = c.g; col[i + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geos.push(g);
+  }
+  return mergeGeometries(geos);
+}

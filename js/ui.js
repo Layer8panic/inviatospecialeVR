@@ -49,15 +49,17 @@ export function drawBlocks(ctx, blocks, x, y, maxW, align = 'left') {
 }
 
 export class CanvasPlane extends THREE.Mesh {
-  constructor(wM, hM, { px = 1024, transparent = true } = {}) {
+  constructor(wM, hM, { px = 1024, transparent = true, overlay = true } = {}) {
     const cw = Math.round(px), ch = Math.max(8, Math.round(px * hM / wM));
     const canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = ch;
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = UIConf.aniso;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent, toneMapped: false, fog: false });
+    // i pannelli restano sempre leggibili: non vengono coperti da persone o oggetti della scena
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent, toneMapped: false, fog: false, depthTest: !overlay, depthWrite: !overlay });
     super(new THREE.PlaneGeometry(wM, hM), mat);
+    if (overlay) this.renderOrder = 20;
     this.canvas = canvas; this.ctx = canvas.getContext('2d'); this.tex = tex; this.cw = cw; this.ch = ch;
     this.wM = wM; this.hM = hM;
   }
@@ -67,6 +69,7 @@ export class CanvasPlane extends THREE.Mesh {
 export class Button extends CanvasPlane {
   constructor(label, { w = 0.5, h = 0.14, bg = '#1f6feb', hover = '#3d8bff', fg = '#ffffff', size = 0.46, align = 'center', onSelect } = {}) {
     super(w, h, { px: Math.min(2048, Math.round(w * 1000)) });
+    this.renderOrder = 22;
     Object.assign(this, { label, bg, hoverBg: hover, fg, size, align });
     this.hovered = false; this.enabled = true; this.state = null;
     this.userData.onSelect = () => { if (this.enabled && onSelect) onSelect(this); };
@@ -95,7 +98,7 @@ export class Button extends CanvasPlane {
       const maxW = w * (this.align === 'center' ? 0.88 : 0.9);
       for (; fs > 14; fs -= 2) {
         c.font = `700 ${fs}px ${FONT}`;
-        lines = wrapLines(c, this.label, maxW);
+        lines = String(this.label).split('\n').flatMap((para) => wrapLines(c, para, maxW));
         if (lines.length * fs * 1.2 <= h * 0.84 && lines.every((l) => c.measureText(l).width <= maxW)) break;
       }
       c.textAlign = this.align; c.textBaseline = 'middle';
@@ -125,15 +128,25 @@ export function makeInfoPanel({ w = 1.5, h = 0.9, kicker, title, text, accent = 
   p.draw((c, cw, ch) => {
     roundRect(c, 0, 0, cw, ch, 40); c.fillStyle = bg; c.fill();
     c.lineWidth = 8; c.strokeStyle = accent; c.stroke();
-    const m = 70; let y = 50;
+    const m = 70, maxW = cw - 2 * m;
+    // riduce il corpo finché tutto il testo entra nel pannello
+    let k = 1, blocks;
+    for (; k > 0.45; k -= 0.05) {
+      blocks = [];
+      if (title) blocks.push({ text: title, font: `900 ${Math.round(64 * k)}px ${FONT}`, color: '#ffffff', lh: Math.round(76 * k), gap: Math.round(22 * k) });
+      if (text) (Array.isArray(text) ? text : [text]).forEach((t) => blocks.push({ text: t, font: `500 ${Math.round(44 * k)}px ${FONT}`, color: '#e6edf7', lh: Math.round(60 * k), gap: Math.round(18 * k) }));
+      let hh = 50 + (kicker ? 64 : 0);
+      for (const b of blocks) { c.font = b.font; hh += wrapLines(c, b.text, maxW).length * b.lh + b.gap; }
+      if (hh <= ch - 30) break;
+    }
+    let y = 50;
     if (kicker) {
-      c.font = `800 40px ${FONT}`; c.fillStyle = accent; c.textBaseline = 'top'; c.textAlign = 'left';
+      c.fillStyle = accent; c.textBaseline = 'top'; c.textAlign = 'left';
+      let fs = 40; c.font = `800 ${fs}px ${FONT}`;
+      while (c.measureText(kicker).width > maxW && fs > 16) { fs -= 2; c.font = `800 ${fs}px ${FONT}`; }
       c.fillText(kicker, m, y); y += 64;
     }
-    const blocks = [];
-    if (title) blocks.push({ text: title, font: `900 64px ${FONT}`, color: '#ffffff', lh: 76, gap: 22 });
-    if (text) (Array.isArray(text) ? text : [text]).forEach((t) => blocks.push({ text: t, font: `500 44px ${FONT}`, color: '#e6edf7', lh: 60, gap: 18 }));
-    drawBlocks(c, blocks, m, y, cw - 2 * m);
+    drawBlocks(c, blocks, m, y, maxW);
   });
   return p;
 }
@@ -177,7 +190,7 @@ export function makeTVCamera(lensHeight = 1.5, { label = true } = {}) {
   const tallyMat = new THREE.MeshBasicMaterial({ color: 0x330000, fog: false });
   const tally = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 8), tallyMat); tally.position.set(0, 0.42, 0.12); yawG.add(tally);
   if (label) {
-    const lp = new CanvasPlane(0.4, 0.09, { px: 512 });
+    const lp = new CanvasPlane(0.4, 0.09, { px: 512, overlay: false });
     lp.draw((c, w, h) => { c.fillStyle = '#d10000'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = `900 ${h * 0.55}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('INVIATO SPECIALE TV', w / 2, h / 2); });
     lp.position.set(0.132, 0.2, -0.05); lp.rotation.y = Math.PI / 2; yawG.add(lp);
     const lp2 = lp.clone(); lp2.position.x = -0.132; lp2.rotation.y = -Math.PI / 2; yawG.add(lp2);
@@ -265,16 +278,16 @@ export class Teleprompter extends THREE.Group {
     tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
     tex.repeat.set(1, this.visPx / H);
     this.tex = tex;
-    this.body = new THREE.Mesh(new THREE.PlaneGeometry(W, VIS), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, fog: false }));
-    this.add(this.body);
+    this.body = new THREE.Mesh(new THREE.PlaneGeometry(W, VIS), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, fog: false, depthTest: false, depthWrite: false }));
+    this.body.renderOrder = 20; this.add(this.body);
 
     // freccia di lettura e barra di avanzamento
-    const arrow = new THREE.Mesh(new THREE.CircleGeometry(0.035, 3), new THREE.MeshBasicMaterial({ color: 0xffd400, fog: false }));
-    arrow.position.set(-W / 2 - 0.0, VIS / 2 - 0.12, 0.004); this.add(arrow);
-    const track = new THREE.Mesh(new THREE.PlaneGeometry(0.018, VIS - 0.04), new THREE.MeshBasicMaterial({ color: 0x333333, fog: false }));
-    track.position.set(W / 2 - 0.03, 0, 0.003); this.add(track);
-    this.thumb = new THREE.Mesh(new THREE.PlaneGeometry(0.022, 0.12), new THREE.MeshBasicMaterial({ color: 0xffd400, fog: false }));
-    this.thumb.position.set(W / 2 - 0.03, 0, 0.005); this.add(this.thumb);
+    const arrow = new THREE.Mesh(new THREE.CircleGeometry(0.035, 3), new THREE.MeshBasicMaterial({ color: 0xffd400, fog: false, depthTest: false }));
+    arrow.renderOrder = 21; arrow.position.set(-W / 2 - 0.0, VIS / 2 - 0.12, 0.004); this.add(arrow);
+    const track = new THREE.Mesh(new THREE.PlaneGeometry(0.018, VIS - 0.04), new THREE.MeshBasicMaterial({ color: 0x333333, fog: false, depthTest: false }));
+    track.renderOrder = 21; track.position.set(W / 2 - 0.03, 0, 0.003); this.add(track);
+    this.thumb = new THREE.Mesh(new THREE.PlaneGeometry(0.022, 0.12), new THREE.MeshBasicMaterial({ color: 0xffd400, fog: false, depthTest: false }));
+    this.thumb.renderOrder = 23; this.thumb.position.set(W / 2 - 0.03, 0, 0.005); this.add(this.thumb);
     this.trackH = VIS - 0.04 - 0.12;
 
     // comandi
@@ -315,6 +328,7 @@ export class Teleprompter extends THREE.Group {
     this.thumb.position.y = this.trackH / 2 - f * this.trackH;
   }
   nudge(px) { this.scroll = THREE.MathUtils.clamp(this.scroll + px, 0, this.maxScroll); this.apply(); }
+  scrollBy(px) { if (px) this.nudge(px); }
   toggle() { this.playing = !this.playing; this.startDelay = 0; this.playBtn.setLabel(this.playing ? '❚❚ PAUSA' : '▶ AVVIA'); }
   speed(d) { this.speedIdx = THREE.MathUtils.clamp(this.speedIdx + d, 0, this.speeds.length - 1); }
   update(dt, stickY = 0) {
@@ -339,7 +353,8 @@ export class QuizPanel extends THREE.Group {
   constructor(questions, { onDone, onClick, sfx } = {}) {
     super();
     this.qs = questions; this.i = 0; this.score = 0; this.onDone = onDone; this.onClick = onClick; this.sfx = sfx;
-    this.bg = new THREE.Mesh(new THREE.PlaneGeometry(1.74, 1.42), new THREE.MeshBasicMaterial({ color: 0x070b14, transparent: true, opacity: 0.94, fog: false }));
+    this.bg = new THREE.Mesh(new THREE.PlaneGeometry(1.74, 1.42), new THREE.MeshBasicMaterial({ color: 0x070b14, transparent: true, opacity: 0.94, fog: false, depthTest: false, depthWrite: false }));
+    this.bg.renderOrder = 19;
     this.bg.position.set(0, -0.08, -0.01); this.add(this.bg);
     this.qPanel = new CanvasPlane(1.6, 0.42, { px: 1400 }); this.qPanel.position.set(0, 0.42, 0); this.add(this.qPanel);
     this.opts = [];
