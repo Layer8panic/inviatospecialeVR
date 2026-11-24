@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inviato Speciale VR – Giornalismo immersivo</title>
+<meta name="description" content="Esperienza WebXR per Meta Quest: gli studenti diventano inviati speciali in quattro mondi virtuali e leggono la notizia in diretta dal gobbo.">
+<meta name="theme-color" content="#c1121f">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%23c1121f'/><circle cx='32' cy='32' r='14' fill='white'/><circle cx='32' cy='32' r='7' fill='%23c1121f'/></svg>">
+<style>
+  :root { --red: #c1121f; --ink: #0b0f17; --paper: #f4f1ea; --muted: #9aa3b2; --line: #232a36; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--ink); color: #fff; font-family: Roboto, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  #app { position: fixed; inset: 0; }
+  #app canvas { display: block; touch-action: none; }
+  #overlay { position: fixed; inset: 0; overflow-y: auto; background: linear-gradient(180deg, rgba(5,7,12,0.82), rgba(5,7,12,0.94)); }
+  body.in-vr #overlay, body.in-preview #overlay { display: none; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 28px 20px 60px; }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .onair { background: var(--red); padding: 6px 12px; border-radius: 6px; font-weight: 900; letter-spacing: .08em; font-size: 14px; }
+  .onair::before { content: "●"; margin-right: 6px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  h1 { font-size: clamp(30px, 5vw, 52px); margin: 0; font-weight: 900; letter-spacing: -.01em; }
+  .lead { font-size: 19px; line-height: 1.5; color: #d7dde8; max-width: 760px; margin: 14px 0 26px; }
+  h2 { font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: #ffd400; margin: 34px 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .world-card { text-align: left; border: 2px solid var(--line); background: #121826; color: #fff; border-radius: 14px; padding: 18px; cursor: pointer; font: inherit; transition: transform .15s, border-color .15s; }
+  .world-card:hover { transform: translateY(-2px); border-color: #4b5563; }
+  .world-card.selected { border-color: #ffd400; box-shadow: 0 0 0 3px rgba(255,212,0,.25); }
+  .world-card .cat { display: inline-block; font-size: 12px; font-weight: 900; letter-spacing: .1em; padding: 4px 8px; border-radius: 5px; }
+  .world-card h3 { margin: 12px 0 8px; font-size: 20px; line-height: 1.2; }
+  .world-card p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.45; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+  label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+  input, select { font: inherit; font-size: 18px; padding: 12px 14px; border-radius: 10px; border: 2px solid var(--line); background: #0f1420; color: #fff; min-width: 240px; }
+  input:focus, select:focus { outline: none; border-color: #ffd400; }
+  .actions { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 26px; }
+  .btn { font: inherit; font-weight: 900; font-size: 20px; padding: 18px 28px; border-radius: 12px; border: 0; cursor: pointer; letter-spacing: .02em; }
+  .btn-vr { background: var(--red); color: #fff; }
+  .btn-vr:disabled { background: #3a3f4a; color: #9aa3b2; cursor: not-allowed; }
+  .btn-sec { background: #1f2937; color: #fff; border: 2px solid #374151; }
+  .status { color: var(--muted); margin-top: 12px; font-size: 15px; }
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .steps li { counter-increment: s; background: #101622; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 12px 52px; position: relative; line-height: 1.45; color: #d7dde8; }
+  .steps li::before { content: counter(s); position: absolute; left: 14px; top: 11px; width: 26px; height: 26px; border-radius: 50%; background: #ffd400; color: #000; font-weight: 900; display: grid; place-items: center; font-size: 14px; }
+  details { background: #101622; border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin-top: 10px; }
+  summary { cursor: pointer; font-weight: 700; }
+  details p, details li { color: #c9d1dd; line-height: 1.5; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  td.empty { color: var(--muted); }
+  .small { font-size: 13px; color: var(--muted); }
+  #hud { display: none; position: fixed; top: 12px; left: 12px; right: 12px; z-index: 5; pointer-events: none; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  body.in-preview #hud { display: flex; }
+  #hud .tip { background: rgba(0,0,0,.6); padding: 8px 12px; border-radius: 8px; font-size: 14px; color: #e5e7eb; }
+  #hud button { pointer-events: auto; font: inherit; font-weight: 800; background: rgba(193,18,31,.95); color: #fff; border: 0; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+  a { color: #8fd8ff; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div class="tip">Anteprima su schermo: trascina per guardarti intorno, clicca sui pulsanti, rotellina o frecce per scorrere il gobbo, R per riportare i pannelli davanti.</div>
+  <button id="btn-exit-preview" type="button">✕ Esci</button>
+</div>
+
+<div id="overlay">
+  <div class="wrap">
+    <header>
+      <span class="onair">IN DIRETTA</span>
+      <h1>Inviato Speciale VR</h1>
+    </header>
+    <p class="lead">Giornalismo immersivo in realtà virtuale. Indossa il visore, guardati intorno e, quando la telecamera ti inquadra, leggi la notizia dal gobbo come un vero inviato. Alla fine c'è una piccola prova.</p>
+
+    <h2>1 · Scegli la missione</h2>
+    <div class="grid">
+      <button class="world-card selected" data-world="sport" type="button">
+        <span class="cat" style="background:#1f8a3b">SPORT</span>
+        <h3>La notte della grande finale</h3>
+        <p>Stadio gremito, Real Madrid contro Barcellona. Cori, tamburi, bandiere e maxischermi.</p>
+      </button>
+      <button class="world-card" data-world="vesuvio" type="button">
+        <span class="cat" style="background:#c2410c">CRONACA</span>
+        <h3>Il Vesuvio si risveglia</h3>
+        <p>Napoli durante un'emergenza vulcanica simulata: colonna di fumo, sirene, elicotteri, Protezione Civile.</p>
+      </button>
+      <button class="world-card" data-world="marte" type="button">
+        <span class="cat" style="background:#b45309">SCIENZA</span>
+        <h3>Destinazione Marte</h3>
+        <p>A bordo della navicella: conto alla rovescia, decollo, la Terra che si allontana, atterraggio sul pianeta rosso.</p>
+      </button>
+      <button class="world-card" data-world="times" type="button">
+        <span class="cat" style="background:#b91c1c">BREAKING NEWS</span>
+        <h3>Natale al buio a Times Square</h3>
+        <p>Luci, neve, musica di Natale e migliaia di persone. Poi, all'improvviso, il blackout.</p>
+      </button>
+    </div>
+
+    <h2>2 · Chi è l'inviato?</h2>
+    <div class="row">
+      <div>
+        <label for="reporter">Nome dello studente (compare in sovrimpressione)</label>
+        <input id="reporter" maxlength="28" placeholder="Es. Giulia R." autocomplete="off">
+      </div>
+      <div>
+        <label for="immersion">Tempo di immersione prima della diretta</label>
+        <select id="immersion">
+          <option value="60" selected>1 minuto</option>
+          <option value="90">1 minuto e mezzo</option>
+          <option value="120">2 minuti</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btn-vr" class="btn btn-vr" type="button">ENTRA IN VR</button>
+      <button id="btn-preview" class="btn btn-sec" type="button">Anteprima su schermo (PC / LIM)</button>
+    </div>
+    <p class="status" id="vr-status">Controllo il visore…</p>
+
+    <h2>Come si svolge</h2>
+    <ol class="steps">
+      <li><b>Il lancio della missione.</b> Sul visore compare la comunicazione della redazione: dove sei e cosa devi documentare.</li>
+      <li><b>L'immersione.</b> Almeno un minuto per guardarsi intorno a 360° e ascoltare i suoni dell'ambiente.</li>
+      <li><b>La telecamera.</b> Compare una telecamera che inquadra lo studente e parte il conto alla rovescia: «COLLEGAMENTO IN DIRETTA TRA 10, 9, 8…».</li>
+      <li><b>La diretta.</b> Accanto all'obiettivo appare il gobbo con titolo, sottotitolo e testo della notizia: caratteri grandi, alto contrasto, sempre davanti agli occhi. I suoni continuano, un po' più bassi.</li>
+      <li><b>La prova finale.</b> Cinque domande: comprensione, riconoscimento delle fake news e osservazione dell'ambiente. Poi il racconto alla classe.</li>
+    </ol>
+
+    <details>
+      <summary>Comandi nel visore (Meta Quest 3)</summary>
+      <ul>
+        <li><b>Grilletto</b> (o pizzico con le mani): premere i pulsanti puntando il raggio.</li>
+        <li><b>Levetta</b> su e giù: far scorrere il testo del gobbo a mano.</li>
+        <li>Sul gobbo: <b>SU / GIÙ</b>, <b>PAUSA / AVVIA</b>, <b>LENTO / VELOCE</b>, <b>HO FINITO</b>.</li>
+        <li><b>Tasto laterale (grip)</b>: riporta i pannelli davanti agli occhi se lo studente si è girato.</li>
+        <li>Per uscire: pulsante <b>ESCI</b> a fine missione, oppure il tasto Meta del controller.</li>
+      </ul>
+    </details>
+    <details>
+      <summary>Note per l'insegnante</summary>
+      <ul>
+        <li>Apri questa pagina dal <b>Browser</b> del Meta Quest e premi «Entra in VR». Non serve installare nulla.</li>
+        <li>Attiva l'audio del visore: suoni, voci dello speaker e comunicazioni radio sono generati dal vivo dal browser.</li>
+        <li>Lo studente può stare in piedi o seduto: i pannelli si posizionano all'altezza dei suoi occhi.</li>
+        <li>Lo scenario del Vesuvio è una <b>simulazione</b> a scopo didattico.</li>
+        <li>L'anteprima su schermo serve per mostrare l'esperienza alla classe sulla LIM.</li>
+        <li>Il registro qui sotto resta salvato solo su questo dispositivo.</li>
+      </ul>
+    </details>
+
+    <h2>Registro delle missioni</h2>
+    <table>
+      <thead><tr><th>Inviato</th><th>Missione</th><th>Punti</th><th>Data</th></tr></thead>
+      <tbody id="registro-body"></tbody>
+    </table>
+    <p><button id="btn-clear" class="btn btn-sec" type="button" style="font-size:14px;padding:8px 14px">Cancella registro</button></p>
+
+    <footer>Inviato Speciale VR · progetto didattico di giornalismo immersivo · <a href="https://github.com/Layer8panic/inviatospecialeVR">codice su GitHub</a></footer>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
