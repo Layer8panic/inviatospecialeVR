@@ -169,6 +169,12 @@
   </div>
 </div>
 
-<script type="module" src="js/main.js"></script>
+<script>
+  // Mostra eventuali errori nella pagina (utile sul visore, dove non c'è la console)
+  function showErr(msg) { var s = document.getElementById('vr-status'); if (s) { s.style.color = '#ff8a8a'; s.textContent = 'Errore: ' + msg; } }
+  window.addEventListener('error', function (e) { showErr((e.message || 'caricamento non riuscito') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); }, true);
+  window.addEventListener('unhandledrejection', function (e) { showErr(String(e.reason && e.reason.message || e.reason)); });
+</script>
+<script type="module" src="js/main.js" onerror="showErr('impossibile caricare js/main.js')"></script>
 </body>
 </html>
